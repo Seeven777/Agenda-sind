@@ -22,6 +22,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem('sind-theme', theme);
     const root = document.documentElement;
+    root.setAttribute('data-theme', theme);
 
     if (theme === 'dark') {
       root.style.setProperty('--bg-primary', '#0f0f13');
@@ -34,18 +35,26 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       root.style.setProperty('--text-primary', '#f0f0fa');
       root.style.setProperty('--text-secondary', '#8888aa');
       root.style.setProperty('--text-muted', '#555570');
+      root.style.setProperty('--accent-glow', 'rgba(255,111,15,0.22)');
+      root.style.setProperty('--accent-soft', 'rgba(255,111,15,0.12)');
     } else {
       root.style.setProperty('--bg-primary', '#f4f4f8');
       root.style.setProperty('--bg-secondary', '#ffffff');
       root.style.setProperty('--bg-card', '#ffffff');
       root.style.setProperty('--bg-card-hover', '#f8f8fc');
-      root.style.setProperty('--bg-input', '#f4f4f8');
+      root.style.setProperty('--bg-input', '#f0f0f5');
       root.style.setProperty('--border-subtle', 'rgba(0,0,0,0.08)');
       root.style.setProperty('--border-color', 'rgba(255,111,15,0.25)');
       root.style.setProperty('--text-primary', '#0f0f18');
       root.style.setProperty('--text-secondary', '#4a4a6a');
-      root.style.setProperty('--text-muted', '#9090b0');
+      root.style.setProperty('--text-muted', '#7070a0');
+      root.style.setProperty('--accent-glow', 'rgba(255,111,15,0.28)');
+      root.style.setProperty('--accent-soft', 'rgba(255,111,15,0.10)');
     }
+
+    // Apply to body background immediately
+    document.body.style.backgroundColor = root.style.getPropertyValue('--bg-primary');
+    document.body.style.color = root.style.getPropertyValue('--text-primary');
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -56,3 +65,4 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     </ThemeContext.Provider>
   );
 };
+

@@ -239,3 +239,30 @@ select option {
   background: var(--bg-card);
   color: var(--text-primary);
 }
+
+/* ====== Light mode overrides ====== */
+[data-theme='light'] .dark-card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+}
+
+[data-theme='light'] .glass-nav {
+  background: rgba(255,255,255,0.85) !important;
+  border-bottom: 1px solid rgba(0,0,0,0.07) !important;
+  backdrop-filter: blur(20px);
+}
+
+[data-theme='light'] .gradient-hero {
+  background: linear-gradient(135deg, #ff6f0f 0%, #ff9a0d 100%) !important;
+}
+
+[data-theme='light'] .chart-bar-track {
+  background: rgba(0,0,0,0.06);
+}
+
+[data-theme='light'] .skeleton {
+  background: linear-gradient(90deg, #e8e8f0 25%, #f0f0f8 50%, #e8e8f0 75%);
+}
+
+[data-theme='light'] ::-webkit-scrollbar-track {
+  background: #f0f0f8;
+}
