@@ -13,7 +13,7 @@ export function Layout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   const [localUser, setLocalUser] = useState(user);
