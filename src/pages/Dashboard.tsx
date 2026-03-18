@@ -5,22 +5,8 @@ import { Event } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X } from 'lucide-react';
+import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X, Navigation2 } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
-
-const categoryMap: Record<string, string> = {
-  reuniao: 'reuniao',
-  processo: 'processo',
-  visita: 'visita',
-  outro: 'all-outros',
-};
-
-const categoryKeyFromLabel = (label: string) => {
-  if (label === 'Reuniões') return 'reuniao';
-  if (label === 'Processos') return 'processo';
-  if (label === 'Visitas') return 'visita';
-  return 'outros';
-};
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -64,14 +50,12 @@ export function Dashboard() {
 
   const handleMetricClick = (item: typeof chartData[0]) => {
     if (activeMetricLabel === item.label) {
-      // Toggle off
       setActiveMetricLabel(null);
       setFilterCategory('all');
       return;
     }
     setActiveMetricLabel(item.label);
     setFilterCategory(item.categoryKey);
-    // Scroll to filtered section after state update
     setTimeout(() => {
       filteredSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
@@ -83,13 +67,28 @@ export function Dashboard() {
   const fullFilterFn = (e: Event) => {
     const matchSearch = searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
     if (filterCategory === 'all') return matchSearch;
-    if (filterCategory === 'outro') {
-      return matchSearch && !['reuniao', 'processo', 'visita'].includes(e.category);
-    }
+    if (filterCategory === 'outro') return matchSearch && !['reuniao', 'processo', 'visita'].includes(e.category);
     return matchSearch && e.category === filterCategory;
   };
 
   const filteredAllEvents = allActiveEvents.filter(fullFilterFn);
+
+  // Build Google Maps route URL from today's events ordered by time
+  const routeUrl = (() => {
+    const locations = todayEvents
+      .filter(e => e.location && e.location.trim() !== '')
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map(e => e.location.trim());
+
+    if (locations.length === 0) return null;
+    if (locations.length === 1) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locations[0])}`;
+    }
+    const origin = encodeURIComponent(locations[0]);
+    const destination = encodeURIComponent(locations[locations.length - 1]);
+    const waypoints = locations.slice(1, -1).map(encodeURIComponent).join('|');
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`;
+  })();
 
   if (loading) {
     return (
@@ -103,7 +102,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
-      {/* Header Row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Dashboard</h1>
@@ -178,7 +177,7 @@ export function Dashboard() {
         })}
       </div>
 
-      {/* Filtered All Events Section — shown when a metric card is clicked */}
+      {/* Filtered All Events — shown when a metric is selected */}
       {activeMetricLabel && activeItem && (
         <div ref={filteredSectionRef} className="dark-card overflow-hidden animate-fade-in">
           <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)', background: `${activeItem.color}10` }}>
@@ -199,7 +198,7 @@ export function Dashboard() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="p-4 space-y-3">
+          <div className="p-4">
             {filteredAllEvents.length === 0 ? (
               <div className="py-10 text-center">
                 <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
@@ -233,6 +232,28 @@ export function Dashboard() {
               </div>
             ) : (
               todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
+            )}
+          </div>
+          {/* Sugerir Rota Button */}
+          <div className="px-4 pb-4">
+            {routeUrl ? (
+              <a
+                href={routeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{ background: 'rgba(255,111,15,0.08)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,111,15,0.15)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,111,15,0.08)'; }}
+              >
+                <Navigation2 className="w-4 h-4" />
+                Sugerir Rota do Dia
+              </a>
+            ) : (
+              <div className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}>
+                <Navigation2 className="w-4 h-4" />
+                Nenhum local definido nos eventos de hoje
+              </div>
             )}
           </div>
         </div>
