@@ -1,12 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp } from 'lucide-react';
+import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
+
+const categoryMap: Record<string, string> = {
+  reuniao: 'reuniao',
+  processo: 'processo',
+  visita: 'visita',
+  outro: 'all-outros',
+};
+
+const categoryKeyFromLabel = (label: string) => {
+  if (label === 'Reuniões') return 'reuniao';
+  if (label === 'Processos') return 'processo';
+  if (label === 'Visitas') return 'visita';
+  return 'outros';
+};
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -16,6 +30,8 @@ export function Dashboard() {
   const [allActiveEvents, setAllActiveEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [activeMetricLabel, setActiveMetricLabel] = useState<string | null>(null);
+  const filteredSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -40,15 +56,40 @@ export function Dashboard() {
   const total = allActiveEvents.length || 1;
 
   const chartData = [
-    { label: 'Reuniões', value: reunioes, color: '#3b82f6', icon: Users },
-    { label: 'Processos', value: processos, color: '#ef4444', icon: Briefcase },
-    { label: 'Visitas', value: visitas, color: '#22c55e', icon: Map },
-    { label: 'Outros', value: outros, color: '#a855f7', icon: Activity },
+    { label: 'Reuniões', value: reunioes, color: '#3b82f6', icon: Users, categoryKey: 'reuniao' },
+    { label: 'Processos', value: processos, color: '#ef4444', icon: Briefcase, categoryKey: 'processo' },
+    { label: 'Visitas', value: visitas, color: '#22c55e', icon: Map, categoryKey: 'visita' },
+    { label: 'Outros', value: outros, color: '#a855f7', icon: Activity, categoryKey: 'outro' },
   ];
 
-  const filterFn = (e: Event) =>
-    (searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase())) &&
-    (filterCategory === 'all' || e.category === filterCategory);
+  const handleMetricClick = (item: typeof chartData[0]) => {
+    if (activeMetricLabel === item.label) {
+      // Toggle off
+      setActiveMetricLabel(null);
+      setFilterCategory('all');
+      return;
+    }
+    setActiveMetricLabel(item.label);
+    setFilterCategory(item.categoryKey);
+    // Scroll to filtered section after state update
+    setTimeout(() => {
+      filteredSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const basicFilterFn = (e: Event) =>
+    searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+
+  const fullFilterFn = (e: Event) => {
+    const matchSearch = searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+    if (filterCategory === 'all') return matchSearch;
+    if (filterCategory === 'outro') {
+      return matchSearch && !['reuniao', 'processo', 'visita'].includes(e.category);
+    }
+    return matchSearch && e.category === filterCategory;
+  };
+
+  const filteredAllEvents = allActiveEvents.filter(fullFilterFn);
 
   if (loading) {
     return (
@@ -58,6 +99,8 @@ export function Dashboard() {
     );
   }
 
+  const activeItem = chartData.find(c => c.label === activeMetricLabel);
+
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
       {/* Header Row */}
@@ -66,10 +109,7 @@ export function Dashboard() {
           <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Dashboard</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Bem-vindo, {user?.name?.split(' ')[0]}</p>
         </div>
-        <Link
-          to="/events/create"
-          className="btn-premium hidden lg:inline-flex items-center gap-2 text-sm"
-        >
+        <Link to="/events/create" className="btn-premium hidden lg:inline-flex items-center gap-2 text-sm">
           <Plus className="w-4 h-4" />
           Novo Evento
         </Link>
@@ -107,39 +147,92 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Metric Cards */}
+      {/* Metric Cards — clickable */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {chartData.map((item, i) => {
           const Icon = item.icon;
+          const isActive = activeMetricLabel === item.label;
           return (
-            <div key={i} className="dark-card p-4 animate-fade-in" style={{ animationDelay: `${i * 80}ms` }}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${item.color}20` }}>
+            <button
+              key={i}
+              onClick={() => handleMetricClick(item)}
+              className="dark-card p-4 animate-fade-in text-left w-full transition-all duration-200 cursor-pointer group"
+              style={{
+                animationDelay: `${i * 80}ms`,
+                border: isActive ? `1.5px solid ${item.color}` : undefined,
+                boxShadow: isActive ? `0 0 20px ${item.color}30` : undefined,
+              }}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110" style={{ background: `${item.color}20` }}>
                 <Icon className="w-5 h-5" style={{ color: item.color }} />
               </div>
               <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{item.value}</p>
               <p className="text-xs font-medium mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.label}</p>
-            </div>
+              {isActive && (
+                <div className="mt-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: item.color }}>
+                  Filtrando ↓
+                </div>
+              )}
+            </button>
           );
         })}
       </div>
 
-      {/* Events Grid */}
+      {/* Filtered All Events Section — shown when a metric card is clicked */}
+      {activeMetricLabel && activeItem && (
+        <div ref={filteredSectionRef} className="dark-card overflow-hidden animate-fade-in">
+          <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)', background: `${activeItem.color}10` }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${activeItem.color}20` }}>
+              <activeItem.icon className="w-4 h-4" style={{ color: activeItem.color }} />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
+                Todos os eventos — {activeMetricLabel}
+              </h2>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{filteredAllEvents.length} evento{filteredAllEvents.length !== 1 ? 's' : ''} encontrado{filteredAllEvents.length !== 1 ? 's' : ''}</p>
+            </div>
+            <button
+              onClick={() => { setActiveMetricLabel(null); setFilterCategory('all'); }}
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            {filteredAllEvents.length === 0 ? (
+              <div className="py-10 text-center">
+                <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento ativo nesta categoria.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {filteredAllEvents.map(event => <EventCard key={event.id} event={event} />)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Today & Upcoming Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Today */}
         <div className="dark-card overflow-hidden">
           <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
             <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
             <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Eventos de Hoje</h2>
-            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{todayEvents.filter(filterFn).length}</span>
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+              {todayEvents.filter(basicFilterFn).length}
+            </span>
           </div>
           <div className="p-4 space-y-3">
-            {todayEvents.filter(filterFn).length === 0 ? (
+            {todayEvents.filter(basicFilterFn).length === 0 ? (
               <div className="py-10 text-center">
                 <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento para hoje.</p>
               </div>
             ) : (
-              todayEvents.filter(filterFn).map(event => <EventCard key={event.id} event={event} />)
+              todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
             )}
           </div>
         </div>
@@ -149,16 +242,18 @@ export function Dashboard() {
           <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
             <div className="w-2 h-2 rounded-full" style={{ background: '#3b82f6' }} />
             <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Próximos Eventos</h2>
-            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>{upcomingEvents.filter(filterFn).length}</span>
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
+              {upcomingEvents.filter(basicFilterFn).length}
+            </span>
           </div>
           <div className="p-4 space-y-3">
-            {upcomingEvents.filter(filterFn).length === 0 ? (
+            {upcomingEvents.filter(basicFilterFn).length === 0 ? (
               <div className="py-10 text-center">
                 <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento futuro.</p>
               </div>
             ) : (
-              upcomingEvents.filter(filterFn).map(event => <EventCard key={event.id} event={event} />)
+              upcomingEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
             )}
           </div>
         </div>
