@@ -52,10 +52,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       root.style.setProperty('--accent-soft', 'rgba(255,111,15,0.10)');
     }
 
-    // Apply to body background immediately
-    document.body.style.backgroundColor = root.style.getPropertyValue('--bg-primary');
-    document.body.style.color = root.style.getPropertyValue('--text-primary');
+    // Remove body hacks - use CSS vars globally
   }, [theme]);
+
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 

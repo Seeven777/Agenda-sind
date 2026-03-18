@@ -10,6 +10,7 @@ export interface User {
   email: string;
   role: Role;
   department?: string;
+  photoUrl?: string;
   fcmToken?: string;
   createdAt?: string;
 }

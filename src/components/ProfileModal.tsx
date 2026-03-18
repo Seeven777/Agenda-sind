@@ -13,10 +13,10 @@ interface ProfileModalProps {
 export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
   const [name, setName] = useState(user.name || '');
   const [department, setDepartment] = useState(user.department || '');
-  const [photoUrl, setPhotoUrl] = useState((user as any).photoUrl || '');
+  const [photoUrl, setPhotoUrl] = useState(user.photoUrl || '');
   const [saving, setSaving] = useState(false);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
-  const [preview, setPreview] = useState<string | null>((user as any).photoUrl || null);
+  const [preview, setPreview] = useState<string | null>(user.photoUrl || null);
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -51,7 +51,8 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
       setTimeout(() => onClose(), 900);
     } catch (error) {
       console.error('Error saving profile:', error);
-      alert('Erro ao salvar. Verifique sua conexão e tente novamente.');
+      // Use toast or better UX instead of alert in future
+      alert('Erro ao salvar perfil. Verifique sua conexão e tente novamente.');
     } finally {
       setSaving(false);
     }

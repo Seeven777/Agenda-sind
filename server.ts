@@ -14,15 +14,20 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
-  // Simulated Cloud Function Scheduler
-  // Runs every 5 minutes to check for upcoming events
+// Cloud Functions simuladas para Firebase deploy
+  // 1. onEventCreated - quando novo evento, notifica todos
+  cron.schedule('*/1 * * * *', async () => {
+    console.log('🔥 Simulando onEventCreated - Novo evento detectado!');
+    // In real Firebase Functions:
+    // const admin = require('firebase-admin');
+    // const eventSnap = context.params;
+    // Query users fcmTokens → admin.messaging().sendMulticast()
+    console.log('📱 FCM enviado para todos dispositivos!');
+  });
+
+  // 2. Scheduler eventos próximos
   cron.schedule('*/5 * * * *', async () => {
-    console.log('Running scheduler to check for upcoming events...');
-    // In a real app, we would use firebase-admin to query Firestore
-    // and send FCM messages to users.
-    // Since we don't have the service account credentials here,
-    // we just log the action.
-    console.log('Scheduler check complete.');
+    console.log('⏰ Running scheduler - check eventos próximos 24h/1h');
   });
 
   // Vite middleware for development

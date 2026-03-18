@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -51,4 +52,19 @@ export const requestNotificationPermission = async () => {
     console.error('An error occurred while requesting permission. ', error);
     return null;
   }
+};
+
+// Setup foreground message handler
+export const setupForegroundNotifications = () => {
+  if (!messaging) return;
+  
+  onMessage(messaging, (payload) => {
+    console.log('Foreground notification:', payload);
+    // Show browser notification
+    new Notification(payload.notification?.title || 'Novo Evento', {
+      body: payload.notification?.body || 'Evento criado na Agenda Sind',
+      icon: '/logo.png',
+      badge: '/logo.png',
+    });
+  });
 };

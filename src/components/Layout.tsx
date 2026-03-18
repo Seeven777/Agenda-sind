@@ -4,7 +4,7 @@ import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, Search, Sun, Mo
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
-import { requestNotificationPermission, db } from '../lib/firebase';
+import { requestNotificationPermission, db, setupForegroundNotifications } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ProfileModal } from './ProfileModal';
 
@@ -15,8 +15,7 @@ export function Layout() {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showProfile, setShowProfile] = useState(false);
+
   const [localUser, setLocalUser] = useState(user);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +32,8 @@ export function Layout() {
             console.error('Error updating FCM token', error);
           }
         }
+        // Setup foreground notifications
+        setupForegroundNotifications();
       }
     };
     setupNotifications();
