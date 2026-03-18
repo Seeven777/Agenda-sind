@@ -12,11 +12,14 @@ export function Layout() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-  const navigate = useNavigate();
-
+const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
 
   const [localUser, setLocalUser] = useState(user);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setLocalUser(user); }, [user]);
