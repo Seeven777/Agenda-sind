@@ -82,24 +82,11 @@ export function Dashboard() {
             <TrendingUp className="w-4 h-4 text-white/70" />
             <span className="text-xs font-bold uppercase tracking-widest text-white/70">Atividades Ativas</span>
           </div>
-          <div className="flex items-end justify-between mb-8">
+          <div className="flex items-end mb-8">
             <div>
               <p className="text-5xl font-black text-white tabular-nums">{allActiveEvents.length}</p>
               <p className="text-white/60 text-sm mt-1">eventos agendados</p>
             </div>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="text-xs font-bold rounded-xl px-3 py-2 border-none outline-none cursor-pointer"
-              style={{ background: 'rgba(0,0,0,0.2)', color: 'white', backdropFilter: 'blur(10px)' }}
-            >
-              <option value="all">Todas</option>
-              <option value="reuniao">Reunião</option>
-              <option value="visita">Visita</option>
-              <option value="processo">Processo</option>
-              <option value="evento">Evento</option>
-              <option value="outro">Outro</option>
-            </select>
           </div>
           <div className="space-y-3">
             {chartData.map((item, i) => (

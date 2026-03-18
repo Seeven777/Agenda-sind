@@ -1,39 +1,50 @@
 // Give the service worker access to Firebase Messaging.
-// Note that you can only use Firebase Messaging here. Other Firebase libraries
-// are not available in the service worker.
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
-// Initialize the Firebase app in the service worker by passing in
-// your app's Firebase config object.
-// https://firebase.google.com/docs/web/setup#config-object
 firebase.initializeApp({
-  apiKey: "api-key",
-  authDomain: "project-id.firebaseapp.com",
-  databaseURL: "https://project-id.firebaseio.com",
-  projectId: "project-id",
-  storageBucket: "project-id.appspot.com",
-  messagingSenderId: "sender-id",
-  appId: "app-id",
-  measurementId: "G-measurement-id",
+  apiKey: "AIzaSyBzaWS-fSmpiEp8rxrf1qzVgBcs6IokqJY",
+  authDomain: "gen-lang-client-0540580910.firebaseapp.com",
+  projectId: "gen-lang-client-0540580910",
+  storageBucket: "gen-lang-client-0540580910.firebasestorage.app",
+  messagingSenderId: "919994512557",
+  appId: "1:919994512557:web:9c12ebec124d2ca337c224",
+  measurementId: "G-FN6JRLZ63P"
 });
 
-// Retrieve an instance of Firebase Messaging so that it can handle background
-// messages.
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log(
-    '[firebase-messaging-sw.js] Received background message ',
-    payload
-  );
-  // Customize notification here
-  const notificationTitle = payload.notification.title;
+  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+
+  const notificationTitle = payload.notification?.title || 'Agenda Sind';
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/logo192.png'
+    body: payload.notification?.body || 'Você tem uma atualização.',
+    icon: '/logo.png',
+    badge: '/logo.png',
+    data: payload.data || {},
+    actions: [
+      { action: 'open', title: 'Ver evento' }
+    ]
   };
 
-  self.registration.showNotification(notificationTitle,
-    notificationOptions);
+  self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
 });

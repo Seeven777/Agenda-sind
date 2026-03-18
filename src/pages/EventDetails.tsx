@@ -4,7 +4,7 @@ import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection } from 'firebase/
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 
 export function EventDetails() {
@@ -74,6 +74,22 @@ export function EventDetails() {
   })() : '';
 
   const googleMapsUrl = event?.location ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}` : '';
+
+  const whatsappUrl = event ? (() => {
+    const categoryLabelsWA: Record<string, string> = {
+      reuniao: 'Reunião', visita: 'Visita Sindical', processo: 'Audiência/Processo', evento: 'Evento Institucional', outro: 'Outro'
+    };
+    const text = [
+      `📅 *${event.title}*`,
+      `🗓 Data: ${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `⏰ Hora: ${event.time}`,
+      `📍 Local: ${event.location}`,
+      `📌 Categoria: ${categoryLabelsWA[event.category] || event.category}`,
+      event.description ? `\n📝 ${event.description}` : '',
+      `\n_Agenda Sind - SindPetShop-SP_`
+    ].filter(Boolean).join('\n');
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  })() : '';
 
   if (loading) {
     return (
@@ -155,7 +171,10 @@ export function EventDetails() {
                 </button>
               )}
               <a href={googleCalendarUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
-                <Calendar className="w-4 h-4" />Google Calendar
+                <Calendar className="w-4 h-4" />Agenda
+              </a>
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(37,211,102,0.1)', color: '#25d366', border: '1px solid rgba(37,211,102,0.2)' }}>
+                <MessageCircle className="w-4 h-4" />WhatsApp
               </a>
             </div>
           </div>
