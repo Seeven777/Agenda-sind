@@ -211,8 +211,7 @@ export function Layout() {
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* Bell */}
-            <button className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
+
               <Bell className="w-4 h-4" />
             </button>
 
