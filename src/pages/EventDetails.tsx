@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +28,7 @@ export function EventDetails() {
         if (docSnap.exists()) {
           setEvent({ id: docSnap.id, ...docSnap.data() } as Event);
         } else {
+          console.error("Documento não encontrado:", id);
           navigate('/');
         }
       } catch (error) {
@@ -41,16 +42,34 @@ export function EventDetails() {
   }, [id, navigate]);
 
   const handleDelete = async () => {
-    if (!event || !id || !user) return;
+    if (!event || !id || !user) {
+      console.error("Dados insuficientes para exclusão:", { event: !!event, id: !!id, user: !!user });
+      return;
+    }
     
     setIsDeleting(true);
     try {
+      // Registrar log antes de excluir (enquanto o evento ainda existe para referência)
+      try {
+        await addDoc(collection(db, 'activity_logs'), {
+          eventId: id,
+          userId: user.uid,
+          action: 'event_deleted',
+          timestamp: new Date().toISOString(),
+          details: `Evento "${event.title}" excluído.`
+        });
+      } catch (logError) {
+        console.warn("Erro ao registrar log de exclusão:", logError);
+      }
+
       await deleteDoc(doc(db, 'events', id));
       setShowDeleteModal(false);
+      
+      // Feedback visual antes de navegar
       navigate('/', { replace: true });
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
-    } finally {
+      console.error("Erro ao excluir documento:", error);
+      alert("Erro ao excluir o evento. Verifique suas permissões.");
       setIsDeleting(false);
     }
   };
@@ -148,7 +167,10 @@ export function EventDetails() {
                     </button>
                   )}
                   <button
-                    onClick={() => setShowDeleteModal(true)}
+                    onClick={() => {
+                      console.log("Abrindo modal de exclusão");
+                      setShowDeleteModal(true);
+                    }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-xl text-white bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg transition-all"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -280,13 +302,13 @@ export function EventDetails() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[100] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 bg-gray-500/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onClick={() => setShowDeleteModal(false)}></div>
 
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-            <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-white/20">
+            <div className="relative inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-white/20">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
@@ -309,7 +331,10 @@ export function EventDetails() {
                   type="button"
                   disabled={isDeleting}
                   className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-lg shadow-red-500/20 px-6 py-2 bg-red-600 text-base font-bold text-white hover:bg-red-700 transition-all sm:w-auto sm:text-sm disabled:opacity-50"
-                  onClick={handleDelete}
+                  onClick={(e) => {
+                    console.log("Confirmando exclusão...");
+                    handleDelete();
+                  }}
                 >
                   {isDeleting ? 'Excluindo...' : 'Excluir'}
                 </button>
