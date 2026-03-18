@@ -21,9 +21,22 @@ exports.onEventCreated = onDocumentCreated("events/{eventId}", async (event) => 
 
   if (tokens.length === 0) return;
 
-  const message = {
+const message = {
     notification: {
       title: `Novo evento: ${eventData.title}`,
       body: `${eventData.location} - ${eventData.date}`,
     },
-    data
+    data: {
+      eventId: event.params.eventId,
+      type: 'new_event',
+    },
+    tokens: tokens
+  };
+
+  try {
+    const response = await admin.messaging().sendMulticast(message);
+    console.log('FCM success:', response.successCount, 'tokens:', response.failureCount);
+  } catch (error) {
+    console.error('FCM Error:', error);
+  }
+

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
+import { Edit3 } from 'lucide-react';
+
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -164,6 +167,11 @@ export function EventDetails() {
                 <button onClick={handleComplete} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
                   <CheckCircle className="w-4 h-4" />Concluir
                 </button>
+              )}
+              {canEdit && (
+                <Link to={`/events/${event.id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
+                  <Edit3 className="w-4 h-4" />Editar
+                </Link>
               )}
               {canEdit && (
                 <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>

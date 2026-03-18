@@ -8,15 +8,16 @@ import { requestNotificationPermission, db, setupForegroundNotifications } from 
 import { doc, updateDoc } from 'firebase/firestore';
 import { ProfileModal } from './ProfileModal';
 
-export function Layout() {
+const Layout = () => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-const navigate = useNavigate();
+  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const [localUser, setLocalUser] = useState(user);
 
@@ -37,6 +38,13 @@ const navigate = useNavigate();
         }
         // Setup foreground notifications
         setupForegroundNotifications();
+        
+        // Check and set notifications state
+        const currentPermission = Notification.permission;
+        setNotificationsEnabled(currentPermission === 'granted');
+        if (currentPermission === 'granted') {
+          setupForegroundNotifications();
+        }
       }
     };
     setupNotifications();
@@ -54,10 +62,42 @@ const navigate = useNavigate();
     { name: 'Novo Evento', href: '/events/create', icon: Plus },
   ];
 
-  const handleLogout = async () => { await logout(); navigate('/login'); };
+  const handleLogout = async () => { 
+    await logout(); 
+    navigate('/login'); 
+  };
 
   const handleProfileUpdate = (updates: any) => {
     setLocalUser(prev => prev ? { ...prev, ...updates } : prev);
+  };
+
+  const toggleNotifications = async () => {
+    try {
+      const currentPermission = Notification.permission;
+      
+      if (currentPermission === 'default') {
+        // Pedir permissão
+        const token = await requestNotificationPermission();
+        if (token) {
+          setNotificationsEnabled(true);
+          setupForegroundNotifications();
+          console.log('Notificações ativadas! Token:', token);
+        } else {
+          console.log('Permissão negada');
+        }
+      } else if (currentPermission === 'granted') {
+        // Confirmar desativação (revoga permissão)
+        if (confirm('Deseja desativar notificações? Isso revogará a permissão no navegador.')) {
+          await Notification.requestPermission();
+          setNotificationsEnabled(false);
+          console.log('Notificações desativadas');
+        }
+      } else {
+        alert('Notificações bloqueadas. Acesse as configurações do navegador para permitir.');
+      }
+    } catch (error) {
+      console.error('Erro ao toggle notificações:', error);
+    }
   };
 
   const Avatar = ({ size = 'md', onClick }: { size?: 'sm' | 'md' | 'lg'; onClick?: () => void }) => {
@@ -215,8 +255,20 @@ const navigate = useNavigate();
             </button>
 
             {/* Bell */}
-            <button className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
+            <button 
+              onClick={toggleNotifications}
+              className="relative w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-[1.05] group" 
+              style={{ 
+                background: notificationsEnabled ? 'var(--accent-soft)' : 'var(--bg-card)', 
+                border: notificationsEnabled ? '1px solid var(--accent)' : '1px solid var(--border-subtle)', 
+                color: notificationsEnabled ? 'var(--accent)' : 'var(--text-muted)' 
+              }}
+              title={notificationsEnabled ? 'Notificações ativas - clique para desativar' : 'Ativar notificações'}
+            >
               <Bell className="w-4 h-4" />
+              {notificationsEnabled && (
+                <span className="absolute -top-1 -right-1 block w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-background shadow-xs animate-ping" />
+              )}
             </button>
 
             {/* Avatar (desktop header) */}
@@ -249,4 +301,7 @@ const navigate = useNavigate();
       )}
     </>
   );
-}
+};
+
+export { Layout };
+

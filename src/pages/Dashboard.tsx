@@ -6,7 +6,7 @@ import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X, Navigation2 } from 'lucide-react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -99,6 +99,8 @@ export function Dashboard() {
   }
 
   const activeItem = chartData.find(c => c.label === activeMetricLabel);
+  const navigate = useNavigate();
+  const handleEdit = (id: string) => navigate(`/events/${id}/edit`);
 
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
@@ -206,7 +208,7 @@ export function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {filteredAllEvents.map(event => <EventCard key={event.id} event={event} />)}
+                {filteredAllEvents.map(event => <EventCard key={event.id} event={event} onEdit={handleEdit} />)}
               </div>
             )}
           </div>
@@ -231,7 +233,7 @@ export function Dashboard() {
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento para hoje.</p>
               </div>
             ) : (
-              todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
+              todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} onEdit={handleEdit} />)
             )}
           </div>
           {/* Sugerir Rota Button */}
@@ -274,7 +276,7 @@ export function Dashboard() {
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento futuro.</p>
               </div>
             ) : (
-              upcomingEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
+              upcomingEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} onEdit={handleEdit} />)
             )}
           </div>
         </div>
@@ -282,3 +284,4 @@ export function Dashboard() {
     </div>
   );
 }
+

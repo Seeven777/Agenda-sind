@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
 import cron from 'node-cron';
 
 async function startServer() {
@@ -9,10 +10,14 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Serve static files from public/ first (manifest.json, logo.png, etc.)
+  app.use(express.static(path.join(process.cwd(), 'public')));
+
   // API routes
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
   });
+
 
 // Cloud Functions simuladas para Firebase deploy
   // 1. onEventCreated - quando novo evento, notifica todos
@@ -36,11 +41,24 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    let indexHtml = await vite.transformIndexHtml('/index.html', fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8'));
     app.use(vite.middlewares);
+
+    // SPA fallback for client-side routes in dev (/calendar, /events/*)
+    app.get('*', async (req, res) => {
+      try {
+        const url = req.originalUrl;
+        let template = await vite.transformIndexHtml(url, indexHtml);
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        return res.status(500).end(e.message);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
