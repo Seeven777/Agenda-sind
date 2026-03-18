@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+}
+
+@layer components {
+  .premium-card {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl transition-all duration-300 hover:shadow-2xl hover:-translate-y-1;
+  }
+  
+  .glass-nav {
+    @apply bg-white/70 backdrop-blur-lg border-b border-gray-200/50 sticky top-0 z-40;
+  }
+  
+  .btn-premium {
+    @apply relative overflow-hidden px-6 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-r from-[#ff6f0f] to-[#ff9e5e] shadow-lg shadow-[#ff6f0f]/20 transition-all hover:shadow-xl hover:shadow-[#ff6f0f]/30 active:scale-95;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#ff6f0f] to-[#ff9e5e];
+  }
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}

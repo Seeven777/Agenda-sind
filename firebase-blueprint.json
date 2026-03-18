@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the Agenda Sind system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "diretoria", "juridico", "comunicacao", "fiscalizacao", "administrativo"] },
+        "department": { "type": "string" },
+        "fcmToken": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "An institutional event or appointment.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string", "format": "time" },
+        "location": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string", "enum": ["alta", "media", "baixa"] },
+        "status": { "type": "string", "enum": ["agendado", "concluido", "cancelado"] },
+        "cnpj": { "type": "string" },
+        "responsible": { "type": "string" },
+        "createdBy": { "type": "string", "description": "UID of the user who created the event" },
+        "notify24h": { "type": "boolean" },
+        "notify1h": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "attachments": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "date", "time", "location", "responsible", "priority", "status", "createdBy"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "A log of actions performed in the system.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "userId": { "type": "string" },
+        "action": { "type": "string", "enum": ["event_created", "event_updated", "event_deleted", "status_changed"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "details": { "type": "string" }
+      },
+      "required": ["eventId", "userId", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles and roles."
+    },
+    "events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Stores all institutional events."
+    },
+    "activity_logs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Stores system activity logs."
+    }
+  }
+}

@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "gustavo13470@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'diretoria', 'juridico', 'comunicacao', 'fiscalizacao', 'administrativo'];
+    }
+
+    function isValidEvent(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 20 &&
+             data.time is string && data.time.size() > 0 && data.time.size() < 10 &&
+             data.location is string && data.location.size() > 0 && data.location.size() < 200 &&
+             data.priority in ['alta', 'media', 'baixa'] &&
+             data.status in ['agendado', 'concluido', 'cancelado'] &&
+             data.category in ['reuniao', 'visita', 'processo', 'evento', 'outro'] &&
+             data.createdBy is string && data.createdBy.size() > 0 && data.createdBy.size() < 100 &&
+             data.creatorName is string && data.creatorName.size() > 0 && data.creatorName.size() < 100 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('cnpj' in data) || (data.cnpj is string && data.cnpj.size() <= 20)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('notify24h' in data) || data.notify24h is bool) &&
+             (!('notify1h' in data) || data.notify1h is bool);
+    }
+
+    function isValidActivityLog(data) {
+      return data.eventId is string && data.eventId.size() > 0 && data.eventId.size() < 100 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.action in ['event_created', 'event_updated', 'event_deleted', 'status_changed'] &&
+             data.timestamp is string && data.timestamp.size() > 0 && data.timestamp.size() < 50 &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 1000));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasRequiredFields(['uid', 'name', 'email', 'role']) && isValidUser(request.resource.data) &&
+                    ((isOwner(userId) && request.resource.data.uid == userId && request.resource.data.role == 'administrativo') || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
+                    ((isOwner(userId) && request.resource.data.uid == resource.data.uid && request.resource.data.role == resource.data.role) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasRequiredFields(['title', 'date', 'time', 'location', 'priority', 'status', 'category', 'createdBy', 'creatorName']) &&
+                    isValidEvent(request.resource.data) && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAuthenticated() && isValidEvent(request.resource.data) &&
+                    (request.resource.data.createdBy == resource.data.createdBy) &&
+                    (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasRequiredFields(['eventId', 'userId', 'action', 'timestamp']) &&
+                    isValidActivityLog(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
