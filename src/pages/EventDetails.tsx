@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle, Printer, Scale, Phone, Lock } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 
 export function EventDetails() {
   const { id } = useParams<{ id: string }>();
@@ -40,13 +41,37 @@ export function EventDetails() {
     if (!event || !id || !user) return;
     setIsDeleting(true);
     try {
-      try {
+      const seriesId = event.seriesId;
+      
+      if (seriesId) {
+        // Buscar todos os eventos da mesma série
+        const seriesQuery = query(
+          collection(db, 'events'),
+          where('seriesId', '==', seriesId)
+        );
+        const seriesSnapshot = await getDocs(seriesQuery);
+        
+        // Excluir todos os eventos da série
+        const deletePromises = seriesSnapshot.docs.map(async (docSnap) => {
+          await deleteDoc(doc(db, 'events', docSnap.id));
+        });
+        await Promise.all(deletePromises);
+        
+        // Log activity para a série
+        await addDoc(collection(db, 'activity_logs'), {
+          eventId: id, userId: user.uid, action: 'event_deleted',
+          timestamp: new Date().toISOString(), details: `Série de eventos "${event.title}" excluída (${seriesSnapshot.size} eventos removidos).`
+        });
+      } else {
+        // Evento único, excluir apenas este
+        await deleteDoc(doc(db, 'events', id));
+        
         await addDoc(collection(db, 'activity_logs'), {
           eventId: id, userId: user.uid, action: 'event_deleted',
           timestamp: new Date().toISOString(), details: `Evento "${event.title}" excluído.`
         });
-      } catch {}
-      await deleteDoc(doc(db, 'events', id));
+      }
+      
       navigate('/', { replace: true });
     } catch (error) {
       console.error("Erro ao excluir:", error);
@@ -79,10 +104,13 @@ export function EventDetails() {
     const categoryLabelsWA: Record<string, string> = {
       reuniao: 'Reunião', visita: 'Visita Sindical', processo: 'Audiência/Processo', evento: 'Evento Institucional', outro: 'Outro'
     };
+    const endDateText = event.endDate ? `\n📅 Término: ${new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : '';
+    const endTimeText = event.endTime ? `\n⏰ Hora Término: ${event.endTime}` : '';
+    
     const text = [
       `📅 *${event.title}*`,
       `🗓 Data: ${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
-      `⏰ Hora: ${event.time}`,
+      `⏰ Hora: ${event.time}${endTimeText}${endDateText}`,
       `📍 Local: ${event.location}`,
       `📌 Categoria: ${categoryLabelsWA[event.category] || event.category}`,
       event.description ? `\n📝 ${event.description}` : '',
@@ -90,6 +118,218 @@ export function EventDetails() {
     ].filter(Boolean).join('\n');
     return `https://wa.me/?text=${encodeURIComponent(text)}`;
   })() : '';
+
+  const handlePrint = () => {
+    if (!event) return;
+    
+    const categoryLabels: Record<string, string> = {
+      reuniao: 'Reunião', visita: 'Visita Sindical', processo: 'Audiência/Processo', evento: 'Evento Institucional', outro: 'Outro'
+    };
+
+    const priorityConfig = {
+      alta: { label: 'Alta', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+      media: { label: 'Média', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+      baixa: { label: 'Baixa', color: '#22c55e', bg: 'rgba(34,197,94,0.1)' },
+    };
+
+    const statusConfig = {
+      agendado: { label: 'Agendado', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
+      concluido: { label: 'Concluído', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
+      cancelado: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+    };
+
+    const priority = priorityConfig[event.priority];
+    const status = statusConfig[event.status];
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${event.title} - Agenda Sind</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+          h1 { color: #333; border-bottom: 2px solid #ff6f0f; padding-bottom: 10px; }
+          .info { margin: 15px 0; }
+          .label { font-weight: bold; color: #666; font-size: 12px; text-transform: uppercase; }
+          .value { font-size: 16px; color: #333; margin-top: 5px; }
+          .badge { display: inline-block; padding: 5px 10px; border-radius: 20px; font-size: 12px; margin-right: 5px; }
+          .description { background: #f5f5f5; padding: 15px; border-radius: 10px; margin-top: 20px; }
+          .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <h1>${event.title}</h1>
+        
+        <div class="info">
+          <div class="label">Categoria</div>
+          <div class="value">${categoryLabels[event.category] || event.category}</div>
+        </div>
+        
+        <div class="info">
+          <div class="label">Data de Início</div>
+          <div class="value">${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        </div>
+        
+        <div class="info">
+          <div class="label">Hora de Início</div>
+          <div class="value">${event.time}</div>
+        </div>
+        
+        ${event.endDate ? `
+        <div class="info">
+          <div class="label">Data de Término</div>
+          <div class="value">${new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        </div>
+        ` : ''}
+        
+        ${event.endTime ? `
+        <div class="info">
+          <div class="label">Hora de Término</div>
+          <div class="value">${event.endTime}</div>
+        </div>
+        ` : ''}
+        
+        <div class="info">
+          <div class="label">Local</div>
+          <div class="value">${event.location}</div>
+        </div>
+        
+        <div class="info">
+          <div class="label">Prioridade</div>
+          <div class="value">
+            <span class="badge" style="background: ${priority.bg}; color: ${priority.color}">${priority.label}</span>
+            <span class="badge" style="background: ${status.bg}; color: ${status.color}">${status.label}</span>
+          </div>
+        </div>
+        
+        ${event.cnpj ? `
+        <div class="info">
+          <div class="label">CNPJ</div>
+          <div class="value">${event.cnpj}</div>
+        </div>
+        ` : ''}
+        
+        <div class="info">
+          <div class="label">Criado por</div>
+          <div class="value">${event.creatorName}</div>
+        </div>
+        
+        ${event.description ? `
+        <div class="description">
+          <div class="label">Descrição</div>
+          <div class="value">${event.description}</div>
+        </div>
+        ` : ''}
+        
+        ${event.tags && event.tags.length > 0 ? `
+        <div class="info">
+          <div class="label">Tags</div>
+          <div class="value">${event.tags.join(', ')}</div>
+        </div>
+        ` : ''}
+        
+        ${event.category === 'processo' && event.processDetails ? `
+        <div style="margin-top: 20px; border-top: 2px solid #ff6f0f; padding-top: 20px;">
+          <h2 style="color: #ff6f0f; font-size: 16px; margin-bottom: 15px;">Dados do Processo</h2>
+          
+          ${event.processDetails.processoNumero ? `
+          <div class="info">
+            <div class="label">Proc. Nº</div>
+            <div class="value">${event.processDetails.processoNumero}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.forum ? `
+          <div class="info">
+            <div class="label">Fórum</div>
+            <div class="value">${event.processDetails.forum}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.localTramitacao ? `
+          <div class="info">
+            <div class="label">Local de Tramitação</div>
+            <div class="value">${event.processDetails.localTramitacao}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.dataDistribuicao ? `
+          <div class="info">
+            <div class="label">Data da Distribuição</div>
+            <div class="value">${new Date(event.processDetails.dataDistribuicao).toLocaleDateString('pt-BR')}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.autor ? `
+          <div class="info">
+            <div class="label">Autor</div>
+            <div class="value">${event.processDetails.autor}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.reu ? `
+          <div class="info">
+            <div class="label">Réu</div>
+            <div class="value">${event.processDetails.reu}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.nomePartes ? `
+          <div class="info">
+            <div class="label">Nome das Partes</div>
+            <div class="value">${event.processDetails.nomePartes}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.acao ? `
+          <div class="info">
+            <div class="label">Ação</div>
+            <div class="value">${event.processDetails.acao}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.advogadoNome ? `
+          <div class="info">
+            <div class="label">Advogado</div>
+            <div class="value">${event.processDetails.advogadoNome}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.advogadoFone ? `
+          <div class="info">
+            <div class="label">Telefone do Advogado</div>
+            <div class="value">${event.processDetails.advogadoFone}</div>
+          </div>
+          ` : ''}
+          
+          ${event.processDetails.acompanhamento ? `
+          <div class="description">
+            <div class="label">Acompanhamento Processual</div>
+            <div class="value">${event.processDetails.acompanhamento}</div>
+          </div>
+          ` : ''}
+        </div>
+        ` : ''}
+        
+        <div class="footer">
+          <p>Agenda Sind - SindPetShop-SP</p>
+          <p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    }
+  };
 
   if (loading) {
     return (
@@ -100,6 +340,53 @@ export function EventDetails() {
   }
 
   if (!event) return null;
+
+  // Verificar se o usuário pode ver este evento pessoal
+  const canSeePersonalEvent = (): boolean => {
+    if (!event.isPersonal) return true;
+    // O criador sempre pode ver
+    if (user?.uid === event.createdBy) return true;
+    // Super admins e boss sempre veem tudo
+    if (isBoss(user?.email) || isDiretoria(user)) return true;
+    // Verificar se tem permissão para ver eventos pessoais
+    if (canSeePersonalEvents(user)) return true;
+    return false;
+  };
+
+  // Se não pode ver o evento pessoal, mostrar mensagem de acesso negado
+  if (!canSeePersonalEvent()) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-4 animate-fade-in pb-24 lg:pb-6">
+        {/* Back */}
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-semibold transition-colors" style={{ color: 'var(--text-muted)' }}
+          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)'}
+          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'}
+        >
+          <ArrowLeft className="w-4 h-4" />Voltar
+        </button>
+
+        {/* Access Denied Card */}
+        <div className="dark-card p-8 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: 'rgba(255,111,15,0.15)' }}>
+            <Lock className="w-8 h-8" style={{ color: 'var(--accent)' }} />
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+            Compromisso Pessoal
+          </h2>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Este é um compromisso pessoal e não está disponível para outros usuários.
+          </p>
+          <button 
+            onClick={() => navigate('/')}
+            className="mt-6 px-6 py-2.5 rounded-xl text-sm font-bold"
+            style={{ background: 'var(--accent)', color: 'white' }}
+          >
+            Voltar ao Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const priorityConfig = {
     alta: { label: 'Alta', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
@@ -170,6 +457,9 @@ export function EventDetails() {
                   <Trash2 className="w-4 h-4" />Excluir
                 </button>
               )}
+              <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(100,116,139,0.1)', color: '#64748b', border: '1px solid rgba(100,116,139,0.2)' }}>
+                <Printer className="w-4 h-4" />Imprimir
+              </button>
               <a href={googleCalendarUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
                 <Calendar className="w-4 h-4" />Agenda
               </a>
@@ -182,8 +472,14 @@ export function EventDetails() {
 
         {/* Details Card */}
         <div className="dark-card p-6 space-y-0">
-          <InfoRow icon={Calendar} label="Data" value={new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
-          <InfoRow icon={Clock} label="Hora" value={event.time} />
+          <InfoRow icon={Calendar} label="Data de Início" value={new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
+          <InfoRow icon={Clock} label="Hora de Início" value={event.time} />
+          {(event.endDate || event.endTime) && (
+            <>
+              {event.endDate && <InfoRow icon={Calendar} label="Data de Término" value={new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />}
+              {event.endTime && <InfoRow icon={Clock} label="Hora de Término" value={event.endTime} />}
+            </>
+          )}
           <InfoRow icon={MapPin} label="Local" value={event.location}
             extra={event.location ? (
               <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-semibold mt-1 transition-colors" style={{ color: 'var(--accent)' }}>
@@ -217,6 +513,58 @@ export function EventDetails() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Process Details - Only show when category is 'processo' */}
+        {event.category === 'processo' && event.processDetails && (
+          <div className="dark-card p-6 space-y-0">
+            <div className="flex items-center gap-2 pb-4 mb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <Scale className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>Dados do Processo</p>
+            </div>
+            
+            {event.processDetails.processoNumero && (
+              <InfoRow icon={FileText} label="Proc. Nº" value={event.processDetails.processoNumero} />
+            )}
+            {event.processDetails.forum && (
+              <InfoRow icon={MapPin} label="Fórum" value={event.processDetails.forum} />
+            )}
+            {event.processDetails.localTramitacao && (
+              <InfoRow icon={MapPin} label="Local de Tramitação" value={event.processDetails.localTramitacao} />
+            )}
+            {event.processDetails.dataDistribuicao && (
+              <InfoRow icon={Calendar} label="Data da Distribuição" value={new Date(event.processDetails.dataDistribuicao).toLocaleDateString('pt-BR')} />
+            )}
+            {event.processDetails.autor && (
+              <InfoRow icon={User} label="Autor" value={event.processDetails.autor} />
+            )}
+            {event.processDetails.reu && (
+              <InfoRow icon={User} label="Réu" value={event.processDetails.reu} />
+            )}
+            {event.processDetails.nomePartes && (
+              <InfoRow icon={User} label="Nome das Partes" value={event.processDetails.nomePartes} />
+            )}
+            {event.processDetails.acao && (
+              <InfoRow icon={FileText} label="Ação" value={event.processDetails.acao} />
+            )}
+            {event.processDetails.advogadoNome && (
+              <InfoRow icon={User} label="Advogado" value={event.processDetails.advogadoNome} />
+            )}
+            {event.processDetails.advogadoFone && (
+              <InfoRow icon={Phone} label="Telefone do Advogado" value={event.processDetails.advogadoFone} />
+            )}
+          </div>
+        )}
+
+        {/* Acompanhamento Processual */}
+        {event.category === 'processo' && event.processDetails?.acompanhamento && (
+          <div className="dark-card p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Acompanhamento Processual</p>
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{event.processDetails.acompanhamento}</p>
           </div>
         )}
       </div>
