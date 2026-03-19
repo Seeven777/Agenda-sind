@@ -10,10 +10,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { useNavigate } from 'react-router-dom';
+import { Plus, Lock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-const locales = {
-  'pt-BR': ptBR,
-};
+const locales = { 'pt-BR': ptBR };
 
 const localizer = dateFnsLocalizer({
   format,
@@ -26,61 +26,46 @@ const localizer = dateFnsLocalizer({
 export function CalendarView() {
   const { user } = useAuth();
   const [events, setEvents] = useState<any[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
 
-    // Função para verificar se o evento deve ser oculto
     const shouldHideEvent = (data: Event): boolean => {
       if (!data.isPersonal) return false;
-      // O criador do evento sempre pode ver
       if (user?.uid === data.createdBy) return false;
-      // Super admins e boss sempre veem tudo
       if (isBoss(user?.email) || isDiretoria(user)) return false;
-      // Verificar se tem permissão para ver eventos pessoais
       if (canSeePersonalEvents(user)) return false;
       return true;
     };
 
-    // Coletar dias com eventos pessoais de outros usuários para mostrar aviso
-    const personalEventDays = new Set<string>();
-
     const q = query(collection(db, 'events'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Primeiro, identificar dias com eventos pessoais
-      snapshot.docs.forEach(doc => {
-        const data = doc.data() as Event;
-        if (data.isPersonal && data.createdBy !== user?.uid && !isBoss(user?.email) && !isDiretoria(user) && !canSeePersonalEvents(user)) {
-          personalEventDays.add(data.date);
-        }
-      });
-
       const formattedEvents = snapshot.docs
-        .filter(doc => {
-          const data = doc.data() as Event;
-          return !shouldHideEvent(data);
-        })
+        .filter(doc => !shouldHideEvent(doc.data() as Event))
         .map(doc => {
           const data = doc.data() as Event;
-          // Parse date and time
           const [year, month, day] = data.date.split('-').map(Number);
           const [hour, minute] = data.time.split(':').map(Number);
-          
           const start = new Date(year, month - 1, day, hour, minute);
-          const end = new Date(start.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
+          const end = new Date(start.getTime() + 60 * 60 * 1000);
 
-          // Se é um evento pessoal que o usuário atual não pode ver, mostrar placeholder
           const isPersonalToHide = data.isPersonal && user?.uid !== data.createdBy && !isBoss(user?.email) && !isDiretoria(user) && !canSeePersonalEvents(user);
 
           return {
             id: doc.id,
-            title: isPersonalToHide ? 'Compromisso Pessoal' : data.title,
+            title: isPersonalToHide ? '🔒 Compromisso Pessoal' : data.title,
             start,
             end,
             resource: data,
-            isPersonalHidden: isPersonalToHide,
-            isPersonalDay: personalEventDays.has(data.date),
           };
         });
       setEvents(formattedEvents);
@@ -93,53 +78,120 @@ export function CalendarView() {
 
   const eventStyleGetter = (event: any) => {
     const data = event.resource as Event;
-    let backgroundColor = '#10B981'; // baixa - green
+    let backgroundColor = '#10B981';
     
-    if (data.priority === 'alta') {
-      backgroundColor = '#EF4444'; // red
-    } else if (data.priority === 'media') {
-      backgroundColor = '#F59E0B'; // yellow
-    }
+    if (data.priority === 'alta') backgroundColor = '#EF4444';
+    else if (data.priority === 'media') backgroundColor = '#F59E0B';
 
     return {
       style: {
         backgroundColor,
-        borderRadius: '4px',
-        opacity: 0.9,
+        borderRadius: '8px',
+        opacity: 0.95,
         color: 'white',
         border: '0px',
-        display: 'block'
+        display: 'block',
+        fontSize: isMobile ? '11px' : '12px',
+        fontWeight: 600,
+        padding: isMobile ? '2px 6px' : '2px 8px',
       }
     };
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Calendário</h1>
-      <div className="h-full">
-        <BigCalendar
-          localizer={localizer}
-          events={events}
-          startAccessor="start"
-          endAccessor="end"
-          style={{ height: '100%' }}
-          messages={{
-            next: "Próximo",
-            previous: "Anterior",
-            today: "Hoje",
-            month: "Mês",
-            week: "Semana",
-            day: "Dia",
-            agenda: "Agenda",
-            date: "Data",
-            time: "Hora",
-            event: "Evento",
-            noEventsInRange: "Não há eventos neste período."
-          }}
-          culture="pt-BR"
-          eventPropGetter={eventStyleGetter}
-          onSelectEvent={(event) => navigate(`/events/${event.id}`)}
-        />
+    <div className="space-y-4 sm:space-y-6 -mx-4 sm:mx-0 px-4 sm:px-0">
+      {/* Header - Mobile Friendly */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+            Calendário
+          </h1>
+          <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            {events.length} evento{events.length !== 1 ? 's' : ''} no total
+          </p>
+        </div>
+        <Link to="/events/create" className="btn-premium inline-flex items-center gap-2 text-sm py-3 px-4 self-start sm:self-auto touch-manipulation">
+          <Plus className="w-4 h-4" />
+          Novo
+        </Link>
+      </div>
+
+      {/* Calendar Container */}
+      <div className="dark-card overflow-hidden">
+        <div className={`p-2 sm:p-4 ${isMobile ? 'pb-16' : ''}`}>
+          {/* Mobile: Month Navigation */}
+          {isMobile && (
+            <div className="flex items-center justify-between mb-3 px-2">
+              <button 
+                className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation"
+                style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
+                onClick={() => {
+                  const cal = document.querySelector('.rbc-toolbar')?.querySelectorAll('button');
+                  if (cal && cal[0]) (cal[0] as HTMLButtonElement).click();
+                }}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button 
+                className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation"
+                style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
+                onClick={() => {
+                  const cal = document.querySelector('.rbc-toolbar')?.querySelectorAll('button');
+                  if (cal && cal[2]) (cal[2] as HTMLButtonElement).click();
+                }}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+          
+          <div style={{ height: isMobile ? 'calc(100vh - 240px)' : 'calc(100vh - 280px)', minHeight: '400px' }}>
+            <BigCalendar
+              localizer={localizer}
+              events={events}
+              startAccessor="start"
+              endAccessor="end"
+              style={{ height: '100%', fontSize: isMobile ? '12px' : '14px' }}
+              messages={{
+                next: "→",
+                previous: "←",
+                today: "Hoje",
+                month: "Mês",
+                week: "Semana",
+                day: "Dia",
+                agenda: "Lista",
+                date: "Data",
+                time: "Hora",
+                event: "Evento",
+                noEventsInRange: "Nenhum evento neste período"
+              }}
+              culture="pt-BR"
+              eventPropGetter={eventStyleGetter}
+              onSelectEvent={(event) => navigate(`/events/${event.id}`)}
+              views={isMobile ? ['month', 'agenda'] : ['month', 'week', 'day', 'agenda']}
+              popup={isMobile}
+              toolbar={!isMobile}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Legend - Mobile Friendly */}
+      <div className="dark-card p-4">
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ background: '#EF4444' }} />
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Alta</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ background: '#F59E0B' }} />
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Média</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ background: '#10B981' }} />
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Baixa</span>
+          </div>
+        </div>
       </div>
     </div>
   );
