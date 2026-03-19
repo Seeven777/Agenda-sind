@@ -24,6 +24,13 @@ export function EventCard({ event, onEdit }: EventCardProps) {
     }
   };
 
+  // Função helper para formatar datas sem problemas de fuso horário
+  const formatDateForPrint = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    return date.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const handlePrint = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -67,9 +74,9 @@ export function EventCard({ event, onEdit }: EventCardProps) {
       <body>
         <h1>${event.title}</h1>
         <div class="info"><div class="label">Categoria</div><div class="value">${categoryLabels[event.category] || event.category}</div></div>
-        <div class="info"><div class="label">Data</div><div class="value">${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div></div>
+        <div class="info"><div class="label">Data</div><div class="value">${formatDateForPrint(event.date)}</div></div>
         <div class="info"><div class="label">Hora</div><div class="value">${event.time}${event.endTime ? ` - ${event.endTime}` : ''}</div></div>
-        ${event.endDate ? `<div class="info"><div class="label">Data de Término</div><div class="value">${new Date(event.endDate).toLocaleDateString('pt-BR')}</div></div>` : ''}
+        ${event.endDate ? `<div class="info"><div class="label">Data de Término</div><div class="value">${formatDateForPrint(event.endDate)}</div></div>` : ''}
         <div class="info"><div class="label">Local</div><div class="value">${event.location}</div></div>
         <div class="info"><div class="label">Prioridade</div><div class="value">
           <span class="badge" style="background: ${priority.bg}; color: ${priority.color}">${priority.label}</span>
@@ -114,12 +121,26 @@ export function EventCard({ event, onEdit }: EventCardProps) {
   const category = categoryConfig[event.category] || categoryConfig.outro;
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00');
+    // Usar parsing explícito para evitar problemas de fuso horário
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de fuso
     return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
   };
 
-  const isToday = event.date === new Date().toISOString().split('T')[0];
-  const isTomorrow = event.date === new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  // Função helper para comparar datas sem considerar fuso horário
+  const getDateString = (date: Date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getDateString(new Date());
+  const tomorrowStr = getDateString(new Date(Date.now() + 86400000));
+  
+  const isToday = event.date === todayStr;
+  const isTomorrow = event.date === tomorrowStr;
 
   const getDateLabel = () => {
     if (isToday) return 'Hoje';

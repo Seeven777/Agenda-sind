@@ -58,6 +58,7 @@ export function CalendarView() {
         .filter(doc => !shouldHideEvent(doc.data() as Event))
         .map(doc => {
           const data = doc.data() as Event;
+          // Usar parsing explícito para evitar problemas de fuso horário
           const [year, month, day] = data.date.split('-').map(Number);
           const [hour, minute] = data.time.split(':').map(Number);
           const start = new Date(year, month - 1, day, hour, minute);

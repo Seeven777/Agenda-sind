@@ -90,9 +90,19 @@ export function EventDetails() {
     }
   };
 
+  // Função helper para formatar datas sem problemas de fuso horário
+  const formatDateLocal = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    return date.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const googleCalendarUrl = event ? (() => {
     const start = event.date.replace(/-/g, '') + 'T' + event.time.replace(/:/g, '') + '00';
-    const endDate = new Date(new Date(`${event.date}T${event.time}`).getTime() + 60 * 60 * 1000);
+    const [year, month, day] = event.date.split('-').map(Number);
+    const [hour, minute] = event.time.split(':').map(Number);
+    const startDate = new Date(year, month - 1, day, hour, minute);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
     const end = endDate.toISOString().replace(/-|:|\.\d\d\d/g, '').split('Z')[0];
     const params = new URLSearchParams({ action: 'TEMPLATE', text: event.title, details: event.description || '', location: event.location, dates: `${start}/${end}` });
     return `https://www.google.com/calendar/render?${params.toString()}`;
@@ -104,12 +114,12 @@ export function EventDetails() {
     const categoryLabelsWA: Record<string, string> = {
       reuniao: 'Reunião', visita: 'Visita Sindical', processo: 'Audiência/Processo', evento: 'Evento Institucional', outro: 'Outro'
     };
-    const endDateText = event.endDate ? `\n📅 Término: ${new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : '';
+    const endDateText = event.endDate ? `\n📅 Término: ${formatDateLocal(event.endDate)}` : '';
     const endTimeText = event.endTime ? `\n⏰ Hora Término: ${event.endTime}` : '';
     
     const text = [
       `📅 *${event.title}*`,
-      `🗓 Data: ${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `🗓 Data: ${formatDateLocal(event.date)}`,
       `⏰ Hora: ${event.time}${endTimeText}${endDateText}`,
       `📍 Local: ${event.location}`,
       `📌 Categoria: ${categoryLabelsWA[event.category] || event.category}`,
@@ -472,11 +482,11 @@ export function EventDetails() {
 
         {/* Details Card */}
         <div className="dark-card p-6 space-y-0">
-          <InfoRow icon={Calendar} label="Data de Início" value={new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
+          <InfoRow icon={Calendar} label="Data de Início" value={formatDateLocal(event.date)} />
           <InfoRow icon={Clock} label="Hora de Início" value={event.time} />
           {(event.endDate || event.endTime) && (
             <>
-              {event.endDate && <InfoRow icon={Calendar} label="Data de Término" value={new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />}
+              {event.endDate && <InfoRow icon={Calendar} label="Data de Término" value={formatDateLocal(event.endDate)} />}
               {event.endTime && <InfoRow icon={Clock} label="Hora de Término" value={event.endTime} />}
             </>
           )}
@@ -534,7 +544,7 @@ export function EventDetails() {
               <InfoRow icon={MapPin} label="Local de Tramitação" value={event.processDetails.localTramitacao} />
             )}
             {event.processDetails.dataDistribuicao && (
-              <InfoRow icon={Calendar} label="Data da Distribuição" value={new Date(event.processDetails.dataDistribuicao).toLocaleDateString('pt-BR')} />
+              <InfoRow icon={Calendar} label="Data da Distribuição" value={formatDateLocal(event.processDetails.dataDistribuicao)} />
             )}
             {event.processDetails.autor && (
               <InfoRow icon={User} label="Autor" value={event.processDetails.autor} />

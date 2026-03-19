@@ -53,12 +53,15 @@ type EventFormData = z.infer<typeof eventSchema>;
 
 function generateRecurringDates(startDate: string, type: string, count: number): string[] {
   const dates: string[] = [];
-  const date = new Date(startDate + 'T00:00:00');
+  // Criar data base a partir da string no formato YYYY-MM-DD
+  const [year, month, day] = startDate.split('-').map(Number);
+  const baseDate = new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de fuso
+  
   for (let i = 0; i < count; i++) {
-    const d = new Date(date);
-    if (type === 'daily') d.setDate(date.getDate() + i);
-    else if (type === 'weekly') d.setDate(date.getDate() + i * 7);
-    else if (type === 'monthly') d.setMonth(date.getMonth() + i);
+    const d = new Date(baseDate);
+    if (type === 'daily') d.setDate(baseDate.getDate() + i);
+    else if (type === 'weekly') d.setDate(baseDate.getDate() + i * 7);
+    else if (type === 'monthly') d.setMonth(baseDate.getMonth() + i);
     dates.push(d.toISOString().split('T')[0]);
   }
   return dates;
@@ -66,8 +69,11 @@ function generateRecurringDates(startDate: string, type: string, count: number):
 
 function generateDatesUntilEndDate(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
-  const start = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
+  // Criar datas a partir das strings no formato YYYY-MM-DD
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+  const start = new Date(startYear, startMonth - 1, startDay, 12, 0, 0); // Meio-dia para evitar problemas de fuso
+  const end = new Date(endYear, endMonth - 1, endDay, 12, 0, 0);
   const current = new Date(start);
   while (current <= end) {
     dates.push(current.toISOString().split('T')[0]);

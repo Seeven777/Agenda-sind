@@ -19,8 +19,15 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // Função helper para obter string de data sem problemas de fuso
+    const getDateString = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    const todayStr = getDateString(new Date());
 
     const todayQuery = query(collection(db, 'events'), where('date', '==', todayStr), orderBy('time', 'asc'));
     const upcomingQuery = query(collection(db, 'events'), where('date', '>', todayStr), orderBy('date', 'asc'), orderBy('time', 'asc'), limit(10));
@@ -46,6 +53,16 @@ export function Dashboard() {
       .filter(e => e.isPersonal && e.createdBy !== user?.uid && user && !isBoss(user.email) && !isDiretoria(user) && !canSeePersonalEvents(user))
       .map(e => e.date)
   );
+
+  // Função helper para obter string de data sem problemas de fuso
+  const getDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getDateString(new Date());
 
   const basicFilterFn = (e: Event) => !shouldHideEventCompletely(e);
 
@@ -188,7 +205,7 @@ export function Dashboard() {
           </span>
         </div>
         <div className="p-4">
-          {todayFiltered.length === 0 && !personalEventDays.has(new Date().toISOString().split('T')[0]) ? (
+          {todayFiltered.length === 0 && !personalEventDays.has(todayStr) ? (
             <div className="empty-state py-8">
               <div className="empty-state-icon">
                 <Calendar className="w-7 h-7" style={{ color: 'var(--accent)' }} />
@@ -201,7 +218,7 @@ export function Dashboard() {
           ) : (
             <div className="space-y-3">
               {todayFiltered.map(event => <EventCard key={event.id} event={event} />)}
-              {personalEventDays.has(new Date().toISOString().split('T')[0]) && (
+              {personalEventDays.has(todayStr) && (
                 <div className="rounded-xl p-4 border border-dashed" style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent)' }}>
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,111,15,0.2)' }}>
