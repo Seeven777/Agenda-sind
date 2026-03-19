@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette, Timer, Scale, User, Phone, MapPinIcon, Lock } from 'lucide-react';
-import { isBoss, isDiretoria } from '../lib/permissions';
+import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette, Timer, Scale, User, Phone, MapPinIcon, Lock, AlertTriangle } from 'lucide-react';
+import { isBoss, isDiretoria, canCreateOnBlockedDays } from '../lib/permissions';
 
 // Schema para detalhes do processo
 const processDetailsSchema = z.object({
@@ -88,6 +88,7 @@ export function CreateEvent() {
   const navigate = useNavigate();
   const [showRecurrence, setShowRecurrence] = useState(false);
   const [showEndDate, setShowEndDate] = useState(false);
+  const [blockedDaysWarning, setBlockedDaysWarning] = useState<string[]>([]);
 
   const { register, handleSubmit, control, watch, setValue, formState: { errors, isSubmitting } } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
@@ -109,6 +110,57 @@ export function CreateEvent() {
   const recurrenceType = watch('recurrenceType');
   const hasEndDate = watch('hasEndDate');
   const category = watch('category');
+  const selectedDate = watch('date');
+  const selectedEndDate = watch('endDate');
+
+  // Verificar se as datas selecionadas estão bloqueadas
+  useEffect(() => {
+    const checkBlockedDays = async () => {
+      if (!user) return;
+      
+      const datesToCheck: string[] = [selectedDate];
+      
+      // Se tem data de término, incluir todas as datas até lá
+      if (hasEndDate && selectedEndDate) {
+        const dates = generateDatesUntilEndDate(selectedDate, selectedEndDate);
+        datesToCheck.push(...dates);
+      }
+      
+      // Se é recorrente, incluir as datas
+      if (isRecurring && recurrenceType && recurrenceType !== 'none') {
+        const count = watch('recurrenceCount') || 4;
+        const dates = generateRecurringDates(selectedDate, recurrenceType, count);
+        datesToCheck.push(...dates);
+      }
+      
+      // Buscar eventos pessoais de outros usuários
+      const blockedDates: string[] = [];
+      for (const date of datesToCheck) {
+        if (!date) continue;
+        const q = query(
+          collection(db, 'events'),
+          where('date', '==', date),
+          where('isPersonal', '==', true)
+        );
+        const snapshot = await getDocs(q);
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          // Se o evento pessoal não é do usuário atual e o usuário não tem permissão
+          if (data.createdBy !== user.uid && !isBoss(user.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user)) {
+            if (!blockedDates.includes(date)) {
+              blockedDates.push(date);
+            }
+          }
+        });
+      }
+      
+      setBlockedDaysWarning(blockedDates);
+    };
+    
+    if (selectedDate) {
+      checkBlockedDays();
+    }
+  }, [selectedDate, selectedEndDate, hasEndDate, isRecurring, recurrenceType, user]);
 
   const handleHasEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setShowEndDate(e.target.checked);
@@ -121,6 +173,13 @@ export function CreateEvent() {
 
   const onSubmit = async (data: EventFormData) => {
     if (!user) return;
+
+    // Verificar se há dias bloqueados
+    if (blockedDaysWarning.length > 0 && !isBoss(user.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user)) {
+      const formattedDates = blockedDaysWarning.map(d => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')).join(', ');
+      alert(`Você não pode criar eventos nos seguintes dias que estão reservados para compromissos pessoais:\n${formattedDates}`);
+      return;
+    }
 
     try {
       const tagsArray = data.tags
@@ -623,6 +682,35 @@ export function CreateEvent() {
             </div>
           </div>
 
+          {/* Aviso de dias bloqueados */}
+          {blockedDaysWarning.length > 0 && !isBoss(user?.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user) && (
+            <div className="rounded-xl p-4 animate-fade-in" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
+                <div>
+                  <p className="text-sm font-bold" style={{ color: '#ef4444' }}>
+                    Dias bloqueados
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Os seguintes dias estão reservados para compromissos pessoais e você não pode criar eventos neles:
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {blockedDaysWarning.slice(0, 5).map((date, i) => (
+                      <li key={i} className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        • {new Date(date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </li>
+                    ))}
+                    {blockedDaysWarning.length > 5 && (
+                      <li className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                        ...e mais {blockedDaysWarning.length - 5} dia(s)
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Submit */}
           <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
             <button
@@ -635,7 +723,7 @@ export function CreateEvent() {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (blockedDaysWarning.length > 0 && !isBoss(user?.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user))}
               className="btn-premium w-full sm:w-auto px-6 py-2.5 disabled:opacity-50"
             >
               {isSubmitting ? 'Salvando...' : (hasEndDate && watch('endDate') ? `Criar múltiplos eventos` : (isRecurring && recurrenceType !== 'none' ? `Criar ${watch('recurrenceCount') || 4} eventos` : 'Salvar Evento'))}

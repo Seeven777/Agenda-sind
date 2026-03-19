@@ -43,8 +43,19 @@ export function CalendarView() {
       return true;
     };
 
+    // Coletar dias com eventos pessoais de outros usuários para mostrar aviso
+    const personalEventDays = new Set<string>();
+
     const q = query(collection(db, 'events'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Primeiro, identificar dias com eventos pessoais
+      snapshot.docs.forEach(doc => {
+        const data = doc.data() as Event;
+        if (data.isPersonal && data.createdBy !== user?.uid && !isBoss(user?.email) && !isDiretoria(user) && !canSeePersonalEvents(user)) {
+          personalEventDays.add(data.date);
+        }
+      });
+
       const formattedEvents = snapshot.docs
         .filter(doc => {
           const data = doc.data() as Event;
@@ -69,6 +80,7 @@ export function CalendarView() {
             end,
             resource: data,
             isPersonalHidden: isPersonalToHide,
+            isPersonalDay: personalEventDays.has(data.date),
           };
         });
       setEvents(formattedEvents);
