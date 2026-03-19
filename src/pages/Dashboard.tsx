@@ -5,7 +5,8 @@ import { Event } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X, Navigation2 } from 'lucide-react';
+import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
+import { Plus, Briefcase, Map, Users, Calendar as CalendarIcon, Activity, TrendingUp, X, Navigation2, Lock } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 
 export function Dashboard() {
@@ -61,10 +62,30 @@ export function Dashboard() {
     }, 80);
   };
 
-  const basicFilterFn = (e: Event) =>
-    searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+  // Verificar se o evento deve ser oculto para o usuário atual
+  const shouldHideEvent = (event: Event): boolean => {
+    if (!event.isPersonal) return false;
+    
+    // O criador do evento sempre pode ver
+    if (user?.uid === event.createdBy) return false;
+    
+    // Super admins sempre veem tudo
+    if (isBoss(user?.email) || isDiretoria(user)) return false;
+    
+    // Verificar se tem permissão para ver eventos pessoais
+    if (canSeePersonalEvents(user)) return false;
+    
+    // Ocultar o evento
+    return true;
+  };
+
+  const basicFilterFn = (e: Event) => {
+    if (shouldHideEvent(e)) return false;
+    return searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
+  };
 
   const fullFilterFn = (e: Event) => {
+    if (shouldHideEvent(e)) return false;
     const matchSearch = searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
     if (filterCategory === 'all') return matchSearch;
     if (filterCategory === 'outro') return matchSearch && !['reuniao', 'processo', 'visita'].includes(e.category);

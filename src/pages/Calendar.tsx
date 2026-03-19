@@ -8,6 +8,7 @@ import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { useNavigate } from 'react-router-dom';
 
 const locales = {
@@ -30,25 +31,42 @@ export function CalendarView() {
   useEffect(() => {
     if (!user) return;
 
+    // Função para verificar se o evento deve ser oculto
+    const shouldHideEvent = (data: Event): boolean => {
+      if (!data.isPersonal) return false;
+      // O criador do evento sempre pode ver
+      if (user?.uid === data.createdBy) return false;
+      // Super admins e boss sempre veem tudo
+      if (isBoss(user?.email) || isDiretoria(user)) return false;
+      // Verificar se tem permissão para ver eventos pessoais
+      if (canSeePersonalEvents(user)) return false;
+      return true;
+    };
+
     const q = query(collection(db, 'events'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const formattedEvents = snapshot.docs.map(doc => {
-        const data = doc.data() as Event;
-        // Parse date and time
-        const [year, month, day] = data.date.split('-').map(Number);
-        const [hour, minute] = data.time.split(':').map(Number);
-        
-        const start = new Date(year, month - 1, day, hour, minute);
-        const end = new Date(start.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
+      const formattedEvents = snapshot.docs
+        .filter(doc => {
+          const data = doc.data() as Event;
+          return !shouldHideEvent(data);
+        })
+        .map(doc => {
+          const data = doc.data() as Event;
+          // Parse date and time
+          const [year, month, day] = data.date.split('-').map(Number);
+          const [hour, minute] = data.time.split(':').map(Number);
+          
+          const start = new Date(year, month - 1, day, hour, minute);
+          const end = new Date(start.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
 
-        return {
-          id: doc.id,
-          title: data.title,
-          start,
-          end,
-          resource: data,
-        };
-      });
+          return {
+            id: doc.id,
+            title: data.title,
+            start,
+            end,
+            resource: data,
+          };
+        });
       setEvents(formattedEvents);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'events');
