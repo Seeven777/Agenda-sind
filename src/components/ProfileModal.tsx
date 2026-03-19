@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User } from '../types';
-import { X, Camera, Save, CheckCircle } from 'lucide-react';
+import { isDiretoria } from '../lib/permissions';
+import { X, Camera, Save, CheckCircle, Eye, EyeOff, Shield } from 'lucide-react';
 
 interface ProfileModalProps {
   user: User;
@@ -19,6 +20,14 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
   const [preview, setPreview] = useState<string | null>((user as any).photoUrl || null);
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Visibility settings for diretoria
+  const [showName, setShowName] = useState(user.visibilitySettings?.showName ?? true);
+  const [showEmail, setShowEmail] = useState(user.visibilitySettings?.showEmail ?? true);
+  const [showDepartment, setShowDepartment] = useState(user.visibilitySettings?.showDepartment ?? true);
+  const [showProfile, setShowProfile] = useState(user.visibilitySettings?.showProfile ?? true);
+
+  const isUserDiretoria = isDiretoria(user);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,12 +47,22 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates: Record<string, string> = {
+      const updates: Record<string, any> = {
         name: name.trim() || user.name,
         department: department.trim(),
         updatedAt: new Date().toISOString(),
       };
       if (photoUrl) updates.photoUrl = photoUrl;
+
+      // Save visibility settings for diretoria
+      if (isUserDiretoria) {
+        updates.visibilitySettings = {
+          showName,
+          showEmail,
+          showDepartment,
+          showProfile,
+        };
+      }
 
       await updateDoc(doc(db, 'users', user.id), updates);
       onUpdate(updates as Partial<User>);
@@ -142,6 +161,97 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
             <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>E-mail</label>
             <div className="dark-input text-sm truncate" style={{ opacity: 0.65, cursor: 'not-allowed', color: 'var(--text-secondary)' }}>{user.email}</div>
           </div>
+
+          {/* Visibility Settings for Diretoria */}
+          {isUserDiretoria && (
+            <div className="rounded-xl p-4 space-y-4" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+              <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <Shield className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
+                  Visibilidade para Outros
+                </h3>
+              </div>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                Controle o que outras pessoas podem ver no seu perfil.
+              </p>
+
+              {/* Show Name */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Mostrar Nome</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Outros podem ver seu nome</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowName(!showName)}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ background: showName ? 'var(--accent)' : '#4b5563' }}
+                >
+                  <div
+                    className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: showName ? '24px' : '4px' }}
+                  />
+                </button>
+              </div>
+
+              {/* Show Email */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Mostrar E-mail</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Outros podem ver seu e-mail</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEmail(!showEmail)}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ background: showEmail ? 'var(--accent)' : '#4b5563' }}
+                >
+                  <div
+                    className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: showEmail ? '24px' : '4px' }}
+                  />
+                </button>
+              </div>
+
+              {/* Show Department */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Mostrar Departamento</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Outros podem ver seu departamento</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDepartment(!showDepartment)}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ background: showDepartment ? 'var(--accent)' : '#4b5563' }}
+                >
+                  <div
+                    className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: showDepartment ? '24px' : '4px' }}
+                  />
+                </button>
+              </div>
+
+              {/* Show Profile in Users List */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Mostrar na Lista de Usuários</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aparecer na lista de membros</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProfile(!showProfile)}
+                  className="relative w-12 h-6 rounded-full transition-colors"
+                  style={{ background: showProfile ? 'var(--accent)' : '#4b5563' }}
+                >
+                  <div
+                    className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: showProfile ? '24px' : '4px' }}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, Search, Sun, Moon } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, Search, Sun, Moon, Settings, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 import { requestNotificationPermission, db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ProfileModal } from './ProfileModal';
+import { isSuperAdmin, isBoss, isDiretoria } from '../lib/permissions';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -44,11 +45,25 @@ export function Layout() {
     }
   }, [isSearchExpanded]);
 
-  const navigation = [
+  // Menu base
+  const baseNavigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Calendário', href: '/calendar', icon: Calendar },
     { name: 'Novo Evento', href: '/events/create', icon: Plus },
   ];
+
+  // Menu Admin (para super admins)
+  const adminNavigation = isSuperAdmin(user?.email) ? [
+    { name: 'Painel Admin', href: '/admin', icon: Settings },
+  ] : [];
+
+  // Menu Privado (para o patrão e diretoria)
+  const bossNavigation = (isBoss(user?.email) || isDiretoria(user)) ? [
+    { name: 'Minha Agenda', href: '/private-dashboard', icon: Crown },
+  ] : [];
+
+  // Menu completo
+  const navigation = [...baseNavigation, ...bossNavigation, ...adminNavigation];
 
   const handleLogout = async () => { await logout(); navigate('/login'); };
 

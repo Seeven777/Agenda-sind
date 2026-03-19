@@ -7,12 +7,33 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette } from 'lucide-react';
+import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette, Timer, Scale, User, Phone, MapPinIcon, Lock } from 'lucide-react';
+import { isBoss, isDiretoria } from '../lib/permissions';
+
+// Schema para detalhes do processo
+const processDetailsSchema = z.object({
+  processoNumero: z.string().optional(),
+  forum: z.string().optional(),
+  autor: z.string().optional(),
+  reu: z.string().optional(),
+  nomePartes: z.string().optional(),
+  acao: z.string().optional(),
+  localTramitacao: z.string().optional(),
+  dataDistribuicao: z.string().optional(),
+  advogadoNome: z.string().optional(),
+  advogadoFone: z.string().optional(),
+  acompanhamento: z.string().optional(),
+});
+
+type ProcessDetailsFormData = z.infer<typeof processDetailsSchema>;
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').max(200),
   date: z.string().min(1, 'Data é obrigatória'),
   time: z.string().min(1, 'Hora é obrigatória'),
+  hasEndDate: z.boolean().optional(),
+  endDate: z.string().optional(),
+  endTime: z.string().optional(),
   location: z.string().min(1, 'Local é obrigatório').max(200),
   category: z.enum(['reuniao', 'visita', 'processo', 'evento', 'outro']),
   priority: z.enum(['alta', 'media', 'baixa']),
@@ -26,6 +47,9 @@ const eventSchema = z.object({
   isRecurring: z.boolean().optional(),
   recurrenceType: z.enum(['daily', 'weekly', 'monthly', 'none']).optional(),
   recurrenceCount: z.number().min(1).max(52).optional(),
+  isPersonal: z.boolean().optional(), // Evento pessoal do patrão
+  // Campos de processo
+  processDetails: processDetailsSchema.optional(),
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -45,12 +69,27 @@ function generateRecurringDates(startDate: string, type: string, count: number):
   return dates;
 }
 
+// Generate dates until end date (for events that span multiple days)
+function generateDatesUntilEndDate(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
 export function CreateEvent() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [showRecurrence, setShowRecurrence] = useState(false);
+  const [showEndDate, setShowEndDate] = useState(false);
 
-  const { register, handleSubmit, control, watch, formState: { errors, isSubmitting } } = useForm<EventFormData>({
+  const { register, handleSubmit, control, watch, setValue, formState: { errors, isSubmitting } } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
     defaultValues: {
       category: 'reuniao',
@@ -62,11 +101,23 @@ export function CreateEvent() {
       isRecurring: false,
       recurrenceType: 'none',
       recurrenceCount: 4,
+      hasEndDate: false,
     }
   });
 
   const isRecurring = watch('isRecurring');
   const recurrenceType = watch('recurrenceType');
+  const hasEndDate = watch('hasEndDate');
+  const category = watch('category');
+
+  const handleHasEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowEndDate(e.target.checked);
+    setValue('hasEndDate', e.target.checked);
+    if (!e.target.checked) {
+      setValue('endDate', '');
+      setValue('endTime', '');
+    }
+  };
 
   const onSubmit = async (data: EventFormData) => {
     if (!user) return;
@@ -76,10 +127,13 @@ export function CreateEvent() {
         ? data.tags.split(',').map(t => t.trim()).filter(t => t.length > 0)
         : [];
 
-      const baseEventData = {
+      // Preparar dados do processo se a categoria for 'processo'
+      const eventData: Record<string, any> = {
         title: data.title,
         date: data.date,
         time: data.time,
+        endDate: data.endDate || '',
+        endTime: data.endTime || '',
         location: data.location,
         category: data.category,
         priority: data.priority,
@@ -96,15 +150,41 @@ export function CreateEvent() {
         creatorName: user.name,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        seriesUpdateAll: true, // Por padrão, atualizações se aplicam a toda a série
+        // Campo de evento pessoal - apenas super admins e diretoria podem marcar
+        isPersonal: (isBoss(user.email) || isDiretoria(user)) ? (data.isPersonal || false) : false,
       };
 
-      const isReallyRecurring = data.isRecurring && data.recurrenceType && data.recurrenceType !== 'none';
+      // Apenas adicionar processDetails se for categoria 'processo'
+      if (data.category === 'processo' && data.processDetails) {
+        eventData.processDetails = {
+          processoNumero: data.processDetails.processoNumero || '',
+          forum: data.processDetails.forum || '',
+          autor: data.processDetails.autor || '',
+          reu: data.processDetails.reu || '',
+          nomePartes: data.processDetails.nomePartes || '',
+          acao: data.processDetails.acao || '',
+          localTramitacao: data.processDetails.localTramitacao || '',
+          dataDistribuicao: data.processDetails.dataDistribuicao || '',
+          advogadoNome: data.processDetails.advogadoNome || '',
+          advogadoFone: data.processDetails.advogadoFone || '',
+          acompanhamento: data.processDetails.acompanhamento || '',
+        };
+      }
 
+      const isReallyRecurring = data.isRecurring && data.recurrenceType && data.recurrenceType !== 'none';
+      
+      // Verifica se tem data de término e gera eventos para cada dia
+      const hasEnd = data.hasEndDate && data.endDate;
+      
+      // Gerar um ID único para agrupar eventos da mesma série
+      const seriesId = `series_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
       if (isReallyRecurring) {
         const count = data.recurrenceCount || 4;
         const dates = generateRecurringDates(data.date, data.recurrenceType!, count);
         for (const dateStr of dates) {
-          const evData = { ...baseEventData, date: dateStr };
+          const evData = { ...eventData, date: dateStr, seriesId };
           const docRef = await addDoc(collection(db, 'events'), evData);
           await addDoc(collection(db, 'activity_logs'), {
             eventId: docRef.id,
@@ -114,8 +194,22 @@ export function CreateEvent() {
             details: `Evento recorrente "${data.title}" criado para ${dateStr}.`,
           });
         }
+      } else if (hasEnd) {
+        // Gera um evento para cada dia até a data de término
+        const dates = generateDatesUntilEndDate(data.date, data.endDate!);
+        for (const dateStr of dates) {
+          const evData = { ...eventData, date: dateStr, seriesId };
+          const docRef = await addDoc(collection(db, 'events'), evData);
+          await addDoc(collection(db, 'activity_logs'), {
+            eventId: docRef.id,
+            userId: user.uid,
+            action: 'event_created',
+            timestamp: new Date().toISOString(),
+            details: `Evento "${data.title}" criado para ${dateStr} (até ${data.endDate}).`,
+          });
+        }
       } else {
-        const docRef = await addDoc(collection(db, 'events'), baseEventData);
+        const docRef = await addDoc(collection(db, 'events'), eventData);
         await addDoc(collection(db, 'activity_logs'), {
           eventId: docRef.id,
           userId: user.uid,
@@ -155,22 +249,64 @@ export function CreateEvent() {
             {errors.title && <p className={errorClass} style={{ color: 'var(--danger)' }}>{errors.title.message}</p>}
           </div>
 
-          {/* Date & Time */}
+          {/* Date & Time - Início */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Data *</span>
+                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Data de Início *</span>
               </label>
               <input type="date" {...register('date')} className="dark-input" />
               {errors.date && <p className={errorClass} style={{ color: 'var(--danger)' }}>{errors.date.message}</p>}
             </div>
             <div>
               <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Hora *</span>
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Hora de Início *</span>
               </label>
               <input type="time" {...register('time')} className="dark-input" />
               {errors.time && <p className={errorClass} style={{ color: 'var(--danger)' }}>{errors.time.message}</p>}
             </div>
+          </div>
+
+          {/* Evento com término - Checkbox */}
+          <div className="rounded-xl p-4" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="hasEndDate"
+                {...register('hasEndDate')}
+                className="w-4 h-4 rounded accent-orange-500"
+                onChange={handleHasEndDateChange}
+              />
+              <label htmlFor="hasEndDate" className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                <Timer className="w-4 h-4" style={{ color: 'var(--accent)' }} />Evento com data de término
+              </label>
+            </div>
+            <p className="text-xs mt-2 ml-7" style={{ color: 'var(--text-muted)' }}>
+              Marque esta opção se o evento acontece em múltiplos dias. Será criado um card para cada dia.
+            </p>
+
+            {/* Date & Time - Fim (only shown when checkbox is checked) */}
+            {showEndDate && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 animate-fade-in">
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Data de Término</span>
+                  </label>
+                  <input 
+                    type="date" 
+                    {...register('endDate')} 
+                    className="dark-input" 
+                    min={watch('date')}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Hora de Término</span>
+                  </label>
+                  <input type="time" {...register('endTime')} className="dark-input" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Location */}
@@ -205,6 +341,160 @@ export function CreateEvent() {
               </select>
             </div>
           </div>
+
+          {/* Processo Details - Only show when category is 'processo' */}
+          {category === 'processo' && (
+            <div className="rounded-xl p-5 space-y-5 animate-fade-in" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+              <div className="flex items-center gap-2 pb-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <Scale className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>
+                  Dados do Processo
+                </h3>
+              </div>
+
+              {/* Número do Processo */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><FileText className="w-3 h-3" />Proc. Nº</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...register('processDetails.processoNumero')} 
+                  className="dark-input" 
+                  placeholder="0000000-00.0000.0.00.0000"
+                />
+              </div>
+
+              {/* Foro */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />Fórum</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...register('processDetails.forum')} 
+                  className="dark-input" 
+                  placeholder="Nome do Fórum"
+                />
+              </div>
+
+              {/* Local de Tramitação */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><MapPinIcon className="w-3 h-3" />Local de Tramitação</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...register('processDetails.localTramitacao')} 
+                  className="dark-input" 
+                  placeholder="Cidade/Estado"
+                />
+              </div>
+
+              {/* Data de Distribuição */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Data da Distribuição</span>
+                </label>
+                <input 
+                  type="date" 
+                  {...register('processDetails.dataDistribuicao')} 
+                  className="dark-input" 
+                />
+              </div>
+
+              {/* Autor e Réu */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><User className="w-3 h-3" />Autor</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    {...register('processDetails.autor')} 
+                    className="dark-input" 
+                    placeholder="Nome do autor"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><User className="w-3 h-3" />Réu</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    {...register('processDetails.reu')} 
+                    className="dark-input" 
+                    placeholder="Nome do réu"
+                  />
+                </div>
+              </div>
+
+              {/* Nome das Partes */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><User className="w-3 h-3" />Nome das Partes</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...register('processDetails.nomePartes')} 
+                  className="dark-input" 
+                  placeholder="Nomes completos das partes envolvidas"
+                />
+              </div>
+
+              {/* Tipo de Ação */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><FileText className="w-3 h-3" />Ação</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...register('processDetails.acao')} 
+                  className="dark-input" 
+                  placeholder="Tipo de ação (Ex: Trabalhista, Civil)"
+                />
+              </div>
+
+              {/* Advogado - Nome e Telefone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><User className="w-3 h-3" />Nome do Advogado</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    {...register('processDetails.advogadoNome')} 
+                    className="dark-input" 
+                    placeholder="Nome completo do advogado"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />Telefone do Advogado</span>
+                  </label>
+                  <input 
+                    type="tel" 
+                    {...register('processDetails.advogadoFone')} 
+                    className="dark-input" 
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+              </div>
+
+              {/* Acompanhamento Processual */}
+              <div>
+                <label className={labelClass} style={{ color: 'var(--text-muted)' }}>
+                  <span className="flex items-center gap-1"><FileText className="w-3 h-3" />Acompanhamento Processual</span>
+                </label>
+                <textarea 
+                  {...register('processDetails.acompanhamento')} 
+                  rows={4} 
+                  className="dark-input resize-none" 
+                  placeholder="Observações sobre o andamento do processo, próximos passos, decisões, etc."
+                />
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div>
@@ -242,6 +532,27 @@ export function CreateEvent() {
               <label htmlFor="notify1h" className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Avisar 1h antes</label>
             </div>
           </div>
+
+          {/* Evento Pessoal - Para diretoria e super admins */}
+          {(isBoss(user?.email) || isDiretoria(user)) && (
+            <div className="rounded-xl p-4" style={{ background: 'rgba(255, 111, 15, 0.08)', border: '1px solid rgba(255, 111, 15, 0.2)' }}>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isPersonal"
+                  {...register('isPersonal')}
+                  className="w-4 h-4 rounded accent-orange-500"
+                />
+                <label htmlFor="isPersonal" className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--accent)' }}>
+                  <Lock className="w-4 h-4" />
+                  Evento Pessoal
+                </label>
+              </div>
+              <p className="text-xs mt-2 ml-7" style={{ color: 'var(--text-muted)' }}>
+                Marque esta opção para tornar o evento visível apenas para você. Outros usuários verão que o dia está reservado, mas sem detalhes.
+              </p>
+            </div>
+          )}
 
           {/* Color & Recurrence */}
           <div className="rounded-xl p-4 space-y-4" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
@@ -327,7 +638,7 @@ export function CreateEvent() {
               disabled={isSubmitting}
               className="btn-premium w-full sm:w-auto px-6 py-2.5 disabled:opacity-50"
             >
-              {isSubmitting ? 'Salvando...' : (isRecurring && recurrenceType !== 'none' ? `Criar ${watch('recurrenceCount') || 4} eventos` : 'Salvar Evento')}
+              {isSubmitting ? 'Salvando...' : (hasEndDate && watch('endDate') ? `Criar múltiplos eventos` : (isRecurring && recurrenceType !== 'none' ? `Criar ${watch('recurrenceCount') || 4} eventos` : 'Salvar Evento'))}
             </button>
           </div>
         </form>
