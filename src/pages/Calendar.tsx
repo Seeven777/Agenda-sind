@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { collection, query, onSnapshot } from 'firebase/firestore';
@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Lock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Lock, Calendar, ChevronLeft, ChevronRight, Grid3X3, List, LayoutGrid } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const locales = { 'pt-BR': ptBR };
@@ -23,11 +23,16 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+type CalendarView = 'month' | 'week' | 'day' | 'agenda';
+
 export function CalendarView() {
   const { user } = useAuth();
   const [events, setEvents] = useState<any[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentView, setCurrentView] = useState<CalendarView>('month');
   const navigate = useNavigate();
+  const calendarRef = useRef<any>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
@@ -98,8 +103,38 @@ export function CalendarView() {
     };
   };
 
+  const handlePreviousMonth = () => {
+    const newDate = subMonths(currentDate, 1);
+    setCurrentDate(newDate);
+    if (calendarRef.current) {
+      calendarRef.current.getApi().date(newDate);
+    }
+  };
+
+  const handleNextMonth = () => {
+    const newDate = addMonths(currentDate, 1);
+    setCurrentDate(newDate);
+    if (calendarRef.current) {
+      calendarRef.current.getApi().date(newDate);
+    }
+  };
+
+  const handleViewChange = (view: CalendarView) => {
+    setCurrentView(view);
+    if (calendarRef.current) {
+      calendarRef.current.getApi().view(view);
+    }
+  };
+
+  const viewOptions = [
+    { key: 'month', label: 'Mês', icon: Grid3X3 },
+    { key: 'week', label: 'Semana', icon: LayoutGrid },
+    { key: 'day', label: 'Dia', icon: Calendar },
+    { key: 'agenda', label: 'Lista', icon: List },
+  ];
+
   return (
-    <div className="space-y-4 sm:space-y-6 -mx-4 sm:mx-0 px-4 sm:px-0">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header - Mobile Friendly */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -116,42 +151,70 @@ export function CalendarView() {
         </Link>
       </div>
 
+      {/* View Selector Cards */}
+      <div className="flex flex-wrap gap-2">
+        {viewOptions.map(view => {
+          const Icon = view.icon;
+          const isActive = currentView === view.key;
+          const isDisabled = isMobile && (view.key === 'week' || view.key === 'day');
+          
+          return (
+            <button
+              key={view.key}
+              onClick={() => !isDisabled && handleViewChange(view.key as CalendarView)}
+              disabled={isDisabled}
+              className="px-3 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 flex-shrink-0"
+              style={{
+                background: isActive ? 'var(--accent)' : 'var(--bg-card)',
+                color: isActive ? 'white' : isDisabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                border: isActive ? 'none' : '1px solid var(--border-subtle)',
+                opacity: isDisabled ? 0.5 : 1,
+                cursor: isDisabled ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <Icon className="w-4 h-4" />
+              {view.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Calendar Container */}
       <div className="dark-card overflow-hidden">
         <div className={`p-2 sm:p-4 ${isMobile ? 'pb-16' : ''}`}>
-          {/* Mobile: Month Navigation */}
-          {isMobile && (
-            <div className="flex items-center justify-between mb-3 px-2">
-              <button 
-                className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
-                onClick={() => {
-                  const cal = document.querySelector('.rbc-toolbar')?.querySelectorAll('button');
-                  if (cal && cal[0]) (cal[0] as HTMLButtonElement).click();
-                }}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button 
-                className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
-                onClick={() => {
-                  const cal = document.querySelector('.rbc-toolbar')?.querySelectorAll('button');
-                  if (cal && cal[2]) (cal[2] as HTMLButtonElement).click();
-                }}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
+          {/* Month Navigation */}
+          <div className="flex items-center justify-between mb-3 px-2">
+            <button 
+              className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation transition-all"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
+              onClick={handlePreviousMonth}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base sm:text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
+            </h3>
+            <button 
+              className="w-10 h-10 rounded-xl flex items-center justify-center touch-manipulation transition-all"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
+              onClick={handleNextMonth}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
           
-          <div style={{ height: isMobile ? 'calc(100vh - 240px)' : 'calc(100vh - 280px)', minHeight: '400px' }}>
+          <div style={{ height: isMobile ? 'calc(100vh - 320px)' : 'calc(100vh - 360px)', minHeight: '400px' }}>
             <BigCalendar
+              ref={calendarRef}
               localizer={localizer}
               events={events}
               startAccessor="start"
               endAccessor="end"
               style={{ height: '100%', fontSize: isMobile ? '12px' : '14px' }}
+              date={currentDate}
+              onNavigate={setCurrentDate}
+              view={currentView}
+              onView={(view) => setCurrentView(view as CalendarView)}
               messages={{
                 next: "→",
                 previous: "←",
@@ -170,13 +233,13 @@ export function CalendarView() {
               onSelectEvent={(event) => navigate(`/events/${event.id}`)}
               views={isMobile ? ['month', 'agenda'] : ['month', 'week', 'day', 'agenda']}
               popup={isMobile}
-              toolbar={!isMobile}
+              toolbar={false}
             />
           </div>
         </div>
       </div>
 
-      {/* Legend - Mobile Friendly */}
+      {/* Legend */}
       <div className="dark-card p-4">
         <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
           <div className="flex items-center gap-2">

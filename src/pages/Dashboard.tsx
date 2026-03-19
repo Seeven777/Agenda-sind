@@ -153,12 +153,20 @@ export function Dashboard() {
       </div>
 
       {/* Category Filter */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0">
+      <div className="flex flex-wrap gap-2">
         {categories.map(cat => (
           <button
             key={cat.key}
-            onClick={() => setFilterCategory(cat.key)}
-            className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all"
+            onClick={() => {
+              setFilterCategory(cat.key);
+              // Scroll suave para os cards filtrados
+              if (cat.key !== 'all') {
+                setTimeout(() => {
+                  document.getElementById('filtered-events')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+              }
+            }}
+            className="px-3 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0"
             style={{
               background: filterCategory === cat.key ? cat.color : 'var(--bg-card)',
               color: filterCategory === cat.key ? 'white' : 'var(--text-secondary)',
@@ -253,7 +261,7 @@ export function Dashboard() {
 
       {/* All Filtered Events */}
       {filterCategory !== 'all' && (
-        <div className="dark-card overflow-hidden">
+        <div id="filtered-events" className="dark-card overflow-hidden">
           <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
             <div className="flex items-center gap-3">
               <button
