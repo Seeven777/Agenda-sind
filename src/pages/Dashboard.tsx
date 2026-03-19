@@ -62,30 +62,32 @@ export function Dashboard() {
     }, 80);
   };
 
-  // Verificar se o evento deve ser oculto para o usuário atual
-  const shouldHideEvent = (event: Event): boolean => {
+  // Verificar se o evento deve ser ocultado completamente para o usuário atual
+  const shouldHideEventCompletely = (event: Event): boolean => {
     if (!event.isPersonal) return false;
-    
     // O criador do evento sempre pode ver
     if (user?.uid === event.createdBy) return false;
-    
-    // Super admins sempre veem tudo
+    // Super admins e boss sempre veem tudo
     if (isBoss(user?.email) || isDiretoria(user)) return false;
-    
     // Verificar se tem permissão para ver eventos pessoais
     if (canSeePersonalEvents(user)) return false;
-    
-    // Ocultar o evento
+    // Ocultar completamente
     return true;
   };
 
+  // Coletar dias com eventos pessoais de outros usuários (para mostrar placeholder)
+  const personalEventDays = new Set(
+    allActiveEvents
+      .filter(e => e.isPersonal && e.createdBy !== user?.uid && user && !isBoss(user.email) && !isDiretoria(user) && !canSeePersonalEvents(user))
+      .map(e => e.date)
+  );
+
   const basicFilterFn = (e: Event) => {
-    if (shouldHideEvent(e)) return false;
     return searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
   };
 
   const fullFilterFn = (e: Event) => {
-    if (shouldHideEvent(e)) return false;
+    if (shouldHideEventCompletely(e)) return false;
     const matchSearch = searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
     if (filterCategory === 'all') return matchSearch;
     if (filterCategory === 'outro') return matchSearch && !['reuniao', 'processo', 'visita'].includes(e.category);
@@ -246,13 +248,29 @@ export function Dashboard() {
             </span>
           </div>
           <div className="p-4 space-y-3">
-            {todayEvents.filter(basicFilterFn).length === 0 ? (
+            {todayEvents.filter(basicFilterFn).length === 0 && !personalEventDays.has(new Date().toISOString().split('T')[0]) ? (
               <div className="py-10 text-center">
                 <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum evento para hoje.</p>
               </div>
             ) : (
-              todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)
+              <>
+                {todayEvents.filter(basicFilterFn).map(event => <EventCard key={event.id} event={event} />)}
+                {/* Placeholder para eventos pessoais de outros */}
+                {personalEventDays.has(new Date().toISOString().split('T')[0]) && (
+                  <div className="rounded-2xl p-4 border-2 border-dashed" style={{ background: 'var(--bg-input)', borderColor: 'var(--accent)', opacity: 0.7 }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,111,15,0.15)' }}>
+                        <Lock className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>Compromisso Pessoal</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Dia reservado para compromisso pessoal</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
           {/* Sugerir Rota Button */}
