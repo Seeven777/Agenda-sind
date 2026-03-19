@@ -59,12 +59,16 @@ export function CalendarView() {
           const start = new Date(year, month - 1, day, hour, minute);
           const end = new Date(start.getTime() + 60 * 60 * 1000); // Assume 1 hour duration
 
+          // Se é um evento pessoal que o usuário atual não pode ver, mostrar placeholder
+          const isPersonalToHide = data.isPersonal && user?.uid !== data.createdBy && !isBoss(user?.email) && !isDiretoria(user) && !canSeePersonalEvents(user);
+
           return {
             id: doc.id,
-            title: data.title,
+            title: isPersonalToHide ? 'Compromisso Pessoal' : data.title,
             start,
             end,
             resource: data,
+            isPersonalHidden: isPersonalToHide,
           };
         });
       setEvents(formattedEvents);

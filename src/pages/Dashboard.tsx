@@ -83,6 +83,8 @@ export function Dashboard() {
   );
 
   const basicFilterFn = (e: Event) => {
+    // Ocultar eventos pessoais de outros usuários completamente
+    if (shouldHideEventCompletely(e)) return false;
     return searchTerm === '' || e.title.toLowerCase().includes(searchTerm.toLowerCase());
   };
 
