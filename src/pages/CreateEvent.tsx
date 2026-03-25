@@ -376,7 +376,7 @@ export function CreateEvent() {
 
             {/* Expandable Sections */}
             
-            {/* Evento com término */}
+            {/* Data de término do evento */}
             <div className="rounded-xl" style={{ background: 'var(--bg-input)' }}>
               <button
                 type="button"
@@ -384,7 +384,7 @@ export function CreateEvent() {
                 className="w-full flex items-center justify-between p-4 touch-manipulation"
               >
                 <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  <Timer className="w-4 h-4 inline mr-2" />Evento com término
+                  <Timer className="w-4 h-4 inline mr-2" />Data de término do evento
                 </span>
                 <ChevronDown className={`w-5 h-5 transition-transform ${showEndDate ? 'rotate-180' : ''}`} style={{ color: 'var(--text-muted)' }} />
               </button>

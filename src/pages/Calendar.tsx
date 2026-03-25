@@ -25,9 +25,18 @@ const localizer = dateFnsLocalizer({
 
 type CalendarView = 'month' | 'week' | 'day' | 'agenda';
 
+// Função helper para obter string de data
+const getDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function CalendarView() {
   const { user } = useAuth();
   const [events, setEvents] = useState<any[]>([]);
+  const [allPersonalDays, setAllPersonalDays] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<CalendarView>('month');
@@ -44,37 +53,51 @@ export function CalendarView() {
   useEffect(() => {
     if (!user) return;
 
-    const shouldHideEvent = (data: Event): boolean => {
-      if (!data.isPersonal) return false;
-      if (user?.uid === data.createdBy) return false;
-      if (isBoss(user?.email) || isDiretoria(user)) return false;
-      if (canSeePersonalEvents(user)) return false;
-      return true;
-    };
-
     const q = query(collection(db, 'events'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const formattedEvents = snapshot.docs
-        .filter(doc => !shouldHideEvent(doc.data() as Event))
-        .map(doc => {
-          const data = doc.data() as Event;
-          // Usar parsing explícito para evitar problemas de fuso horário
-          const [year, month, day] = data.date.split('-').map(Number);
-          const [hour, minute] = data.time.split(':').map(Number);
-          const start = new Date(year, month - 1, day, hour, minute);
-          const end = new Date(start.getTime() + 60 * 60 * 1000);
+      // Coletar TODOS os dias com eventos pessoais (de todos os usuários)
+      const personalDays = new Set<string>();
+      
+      const formattedEvents = snapshot.docs.map(doc => {
+        const data = doc.data() as Event;
+        
+        // Coleta TODOS os dias com eventos pessoais (para mostrar vermelho)
+        if (data.isPersonal) {
+          personalDays.add(data.date);
+        }
+        
+        // Verificar se o evento deve ser oculto do calendário
+        const shouldHideDetails = (): boolean => {
+          if (!data.isPersonal) return false;
+          // Se é o criador do evento, pode ver
+          if (user?.uid === data.createdBy) return false;
+          // Se é boss ou diretoria, pode ver
+          if (isBoss(user?.email) || isDiretoria(user)) return false;
+          // Se tem permissão específica, pode ver
+          if (canSeePersonalEvents(user)) return false;
+          return true;
+        };
+        
+        // Usar parsing explícito para evitar problemas de fuso horário
+        const [year, month, day] = data.date.split('-').map(Number);
+        const [hour, minute] = data.time.split(':').map(Number);
+        const start = new Date(year, month - 1, day, hour, minute);
+        const end = new Date(start.getTime() + 60 * 60 * 1000);
 
-          const isPersonalToHide = data.isPersonal && user?.uid !== data.createdBy && !isBoss(user?.email) && !isDiretoria(user) && !canSeePersonalEvents(user);
-
-          return {
-            id: doc.id,
-            title: isPersonalToHide ? '🔒 Compromisso Pessoal' : data.title,
-            start,
-            end,
-            resource: data,
-          };
-        });
-      setEvents(formattedEvents);
+        return {
+          id: doc.id,
+          title: shouldHideDetails() ? '🔒 Compromisso Pessoal' : data.title,
+          start,
+          end,
+          resource: data,
+          // Marcar se deve ser oculto
+          isHidden: shouldHideDetails(),
+        };
+      });
+      
+      setAllPersonalDays(personalDays);
+      // Mostrar apenas eventos não ocultos
+      setEvents(formattedEvents.filter(e => !e.isHidden));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'events');
     });
@@ -84,10 +107,12 @@ export function CalendarView() {
 
   const eventStyleGetter = (event: any) => {
     const data = event.resource as Event;
-    let backgroundColor = '#10B981';
+    let backgroundColor = '#10B981'; // Verde - aberto (prioridade baixa padrão)
     
-    if (data.priority === 'alta') backgroundColor = '#EF4444';
-    else if (data.priority === 'media') backgroundColor = '#F59E0B';
+    // Prioridade
+    if (data.priority === 'alta') backgroundColor = '#EF4444'; // Vermelho - alta
+    else if (data.priority === 'media') backgroundColor = '#F59E0B'; // Amarelo - média
+    // Verde = baixa (padrão)
 
     return {
       style: {
@@ -102,6 +127,22 @@ export function CalendarView() {
         padding: isMobile ? '2px 6px' : '2px 8px',
       }
     };
+  };
+
+  // Personalizar o estilo do dia no calendário
+  const dayPropGetter = (date: Date) => {
+    const dateStr = getDateString(date);
+    const isPersonalDay = allPersonalDays.has(dateStr);
+    
+    if (isPersonalDay) {
+      return {
+        style: {
+          backgroundColor: 'rgba(239, 68, 68, 0.15)', // Vermelho claro para dias reservados
+          borderRadius: '8px',
+        }
+      };
+    }
+    return {};
   };
 
   const handlePreviousMonth = () => {
@@ -231,6 +272,7 @@ export function CalendarView() {
               }}
               culture="pt-BR"
               eventPropGetter={eventStyleGetter}
+              dayPropGetter={dayPropGetter}
               onSelectEvent={(event) => navigate(`/events/${event.id}`)}
               views={isMobile ? ['month', 'agenda'] : ['month', 'week', 'day', 'agenda']}
               popup={isMobile}
@@ -243,6 +285,7 @@ export function CalendarView() {
       {/* Legend */}
       <div className="dark-card p-4">
         <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+          {/* Prioridades dos Eventos */}
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded" style={{ background: '#EF4444' }} />
             <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Alta</span>
@@ -254,6 +297,15 @@ export function CalendarView() {
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded" style={{ background: '#10B981' }} />
             <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Baixa</span>
+          </div>
+          
+          {/* Separador */}
+          <div className="hidden sm:block w-px h-4" style={{ background: 'var(--border-subtle)' }} />
+          
+          {/* Dias Reservados */}
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ background: 'rgba(239, 68, 68, 0.3)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Dia Reservado</span>
           </div>
         </div>
       </div>
