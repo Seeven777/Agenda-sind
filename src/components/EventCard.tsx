@@ -1,18 +1,53 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, MapPin, Edit2, Printer, Repeat, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, Edit2, Printer, Repeat, ArrowRight, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Event } from '../types';
+import { canUserEditEvent, canUserDeleteEvent } from '../lib/permissions';
 
 interface EventCardProps {
   event: Event;
   onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-export function EventCard({ event, onEdit }: EventCardProps) {
+export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const isOwner = user?.uid === event.createdBy;
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+  const [checkingPermissions, setCheckingPermissions] = useState(true);
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!user) {
+        console.log('[EventCard] user é null');
+        setCanEdit(false);
+        setCanDelete(false);
+        setCheckingPermissions(false);
+        return;
+      }
+      
+      console.log('[EventCard] Verificando permissões para user:', user.name, 'role:', user.role);
+      console.log('[EventCard] event.createdBy:', event.createdBy);
+      
+      try {
+        const editPermission = await canUserEditEvent(user, event.createdBy);
+        const deletePermission = await canUserDeleteEvent(user, event.createdBy);
+        console.log('[EventCard] editPermission:', editPermission, 'deletePermission:', deletePermission);
+        setCanEdit(editPermission);
+        setCanDelete(deletePermission);
+      } catch (error) {
+        console.error('Erro ao verificar permissões:', error);
+        setCanEdit(false);
+        setCanDelete(false);
+      } finally {
+        setCheckingPermissions(false);
+      }
+    };
+    
+    checkPermissions();
+  }, [user, event.createdBy]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -226,7 +261,7 @@ export function EventCard({ event, onEdit }: EventCardProps) {
             >
               <Printer className="w-4 h-4" />
             </button>
-            {isOwner && (
+            {canEdit && !checkingPermissions && (
               <button
                 onClick={handleEdit}
                 className="p-2.5 rounded-xl transition-all flex items-center gap-1.5 touch-target"
