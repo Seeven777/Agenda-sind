@@ -182,13 +182,10 @@ const userRolesCache: Map<string, string> = new Map();
  * Obtém o role/cargo de um usuário pelo UID
  */
 export async function getUserRole(userId: string): Promise<string | null> {
-  console.log('[getUserRole] Buscando role para userId:', userId);
-  
-  // Verificar cache primeiro (desabilitado temporariamente para debug)
-  // if (userRolesCache.has(userId)) {
-  //   console.log('[getUserRole] Retornando do cache:', userRolesCache.get(userId));
-  //   return userRolesCache.get(userId) || null;
-  // }
+  // Verificar cache primeiro
+  if (userRolesCache.has(userId)) {
+    return userRolesCache.get(userId) || null;
+  }
   
   try {
     const userRef = doc(db, 'users', userId);
@@ -196,12 +193,11 @@ export async function getUserRole(userId: string): Promise<string | null> {
     
     if (userSnap.exists()) {
       const userData = userSnap.data();
-      const role = userData.role;
-      console.log('[getUserRole] Role encontrado no Firebase:', role, 'para userId:', userId);
-      userRolesCache.set(userId, role);
-      return role;
-    } else {
-      console.log('[getUserRole] Documento do usuário não encontrado no Firebase');
+      const role = userData.role as string | undefined;
+      if (role) {
+        userRolesCache.set(userId, role);
+        return role;
+      }
     }
   } catch (error) {
     console.error('Erro ao buscar role do usuário:', error);
@@ -219,26 +215,16 @@ export async function hasSameRoleAsCreator(
   currentUser: User | null,
   creatorId: string
 ): Promise<boolean> {
-  if (!currentUser) {
-    console.log('[hasSameRoleAsCreator] currentUser é null');
-    return false;
-  }
-  if (currentUser.uid === creatorId) {
-    console.log('[hasSameRoleAsCreator] É o próprio criador, permitindo edição');
-    return true; // É o próprio criador
-  }
-  
-  // Não verificar super admin aqui - já é coberto em canUserEditEvent/canUserDeleteEvent
+  if (!currentUser) return false;
+  if (currentUser.uid === creatorId) return true; // É o próprio criador
   
   try {
     const creatorRole = await getUserRole(creatorId);
-    console.log('[hasSameRoleAsCreator] currentUser.role:', currentUser.role, 'creatorRole:', creatorRole);
-    if (creatorRole) {
-      const sameRole = currentUser.role === creatorRole;
-      console.log('[hasSameRoleAsCreator] Comparação de roles:', sameRole);
-      return sameRole;
-    } else {
-      console.log('[hasSameRoleAsCreator] creatorRole não encontrado');
+    if (creatorRole && currentUser.role) {
+      // Comparação direta, remove espaços em branco extras
+      const currentRole = currentUser.role.trim().toLowerCase();
+      const creatorRoleClean = creatorRole.trim().toLowerCase();
+      return currentRole === creatorRoleClean;
     }
   } catch (error) {
     console.error('Erro ao verificar cargo do criador:', error);
