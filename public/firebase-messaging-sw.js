@@ -1,7 +1,8 @@
-// Give the service worker access to Firebase Messaging.
+// Firebase Messaging Service Worker
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
+// Firebase configuration from the app
 firebase.initializeApp({
   apiKey: "AIzaSyBzaWS-fSmpiEp8rxrf1qzVgBcs6IokqJY",
   authDomain: "gen-lang-client-0540580910.firebaseapp.com",
@@ -14,37 +15,129 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Handle background messages (push notifications)
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message:', payload);
-
+  
+  // Extract notification data
   const notificationTitle = payload.notification?.title || 'Agenda Sind';
+  const notificationBody = payload.notification?.body || 'Você tem uma nova atualização.';
+  const notificationIcon = payload.notification?.icon || '/logo.png';
+  const notificationBadge = '/logo.png';
+  
+  // Get additional data
+  const data = payload.data || {};
+  const eventId = data.eventId;
+  const notificationType = data.type || 'default';
+  
+  // Create notification options
   const notificationOptions = {
-    body: payload.notification?.body || 'Você tem uma atualização.',
-    icon: '/logo.png',
-    badge: '/logo.png',
-    data: payload.data || {},
+    body: notificationBody,
+    icon: notificationIcon,
+    badge: notificationBadge,
+    data: {
+      ...data,
+      url: data.url || (eventId ? `/events/${eventId}` : '/')
+    },
+    vibrate: [200, 100, 200],
+    tag: `agenda-${notificationType}-${eventId || Date.now()}`,
+    renotify: true,
+    requireInteraction: notificationType === 'event_reminder',
     actions: [
-      { action: 'open', title: 'Ver evento' }
-    ]
+      { action: 'open_event', title: 'Ver Evento' },
+      { action: 'dismiss', title: 'Dispensar' }
+    ],
+    timestamp: Date.now()
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // Show the notification
+  return self.registration.showNotification(notificationTitle, notificationOptions)
+    .then(() => console.log('[firebase-messaging-sw.js] Notification shown successfully'))
+    .catch(err => console.error('[firebase-messaging-sw.js] Error showing notification:', err));
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
+  console.log('[firebase-messaging-sw.js] Notification click event:', event);
+  
+  // Handle dismiss action
+  if (event.action === 'dismiss') {
+    event.notification.close();
+    return;
+  }
+  
+  // Close the notification
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  
+  // Get the URL to navigate to
+  const targetUrl = event.notification.data?.url || '/';
+  
+  // Check if there's already a window open
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((windowClients) => {
-      for (const client of windowClients) {
-        if (client.url === url && 'focus' in client) {
-          return client.focus();
+    clients.matchAll({ 
+      type: 'window',
+      includeUncontrolled: true
+    })
+    .then((clientList) => {
+      // Try to focus an existing window
+      for (const client of clientList) {
+        // Check if this is our app
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          // Navigate to the target URL
+          client.navigate(targetUrl)
+            .then(() => {
+              if (client.visibilityState === 'hidden') {
+                client.focus();
+              }
+            })
+            .catch(() => {
+              // If navigation fails, just focus the client
+              client.focus();
+            });
+          return;
         }
       }
+      
+      // If no existing window, open a new one
       if (clients.openWindow) {
-        return clients.openWindow(url);
+        return clients.openWindow(targetUrl);
       }
     })
+    .catch(err => {
+      console.error('[firebase-messaging-sw.js] Error handling notification click:', err);
+    })
   );
+});
+
+// Handle notification close
+self.addEventListener('notificationclose', (event) => {
+  console.log('[firebase-messaging-sw.js] Notification closed:', event);
+});
+
+// Handle push subscription changes
+self.addEventListener('pushsubscriptionchange', (event) => {
+  console.log('[firebase-messaging-sw.js] Push subscription changed:', event);
+  
+  event.waitUntil(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: self.registration.active?.pushManager?.applicationServerKey
+    })
+    .then(subscription => {
+      console.log('[firebase-messaging-sw.js] New subscription:', subscription);
+      // Here you would typically send the new subscription to your server
+    })
+    .catch(err => {
+      console.error('[firebase-messaging-sw.js] Error resubscribing:', err);
+    })
+  );
+});
+
+// Handle messages from the main app
+self.addEventListener('message', (event) => {
+  console.log('[firebase-messaging-sw.js] Message from main app:', event.data);
+  
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

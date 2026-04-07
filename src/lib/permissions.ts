@@ -1,4 +1,6 @@
 import { User, UserPermissions } from '../types';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
 
 // Emails dos Super Admins / Proprietários
 export const SUPER_ADMINS = [
@@ -165,4 +167,118 @@ export function shouldShowProfile(viewerUser: User | null, targetUser: User): bo
   }
   
   return true;
+}
+
+// =============================================================================
+// PERMISSÕES POR CARGO/DEPARTAMENTO
+// =============================================================================
+// Permite que usuários do mesmo cargo/departamento editem e excluam
+// eventos uns dos outros (ex: Zelia e Marli, ambas do jurídico)
+
+// Cache local para armazenar roles dos usuários (evita muitas consultas)
+const userRolesCache: Map<string, string> = new Map();
+
+/**
+ * Obtém o role/cargo de um usuário pelo UID
+ */
+export async function getUserRole(userId: string): Promise<string | null> {
+  // Verificar cache primeiro
+  if (userRolesCache.has(userId)) {
+    return userRolesCache.get(userId) || null;
+  }
+  
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const role = userSnap.data().role;
+      userRolesCache.set(userId, role);
+      return role;
+    }
+  } catch (error) {
+    console.error('Erro ao buscar role do usuário:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Verifica se o usuário atual tem o mesmo cargo que o criador do evento.
+ * Isso permite que usuários do mesmo departamento/cargo editem e excluam
+ * eventos uns dos outros.
+ */
+export async function hasSameRoleAsCreator(
+  currentUser: User | null,
+  creatorId: string
+): Promise<boolean> {
+  if (!currentUser) return false;
+  if (currentUser.uid === creatorId) return true; // É o próprio criador
+  
+  // Super admins sempre têm acesso total
+  if (currentUser.isAdmin || isSuperAdmin(currentUser.email)) return false; // Já coberto por outras verificações
+  
+  try {
+    const creatorRole = await getUserRole(creatorId);
+    if (creatorRole) {
+      return currentUser.role === creatorRole;
+    }
+  } catch (error) {
+    console.error('Erro ao verificar cargo do criador:', error);
+  }
+  
+  return false;
+}
+
+/**
+ * Verifica se o usuário pode editar um evento.
+ * Retorna true se:
+ * - É admin/super admin
+ * - É o criador do evento
+ * - Tem o mesmo cargo que o criador
+ */
+export async function canUserEditEvent(
+  currentUser: User | null,
+  creatorId: string
+): Promise<boolean> {
+  if (!currentUser) return false;
+  
+  // Super admins e admins podem editar qualquer evento
+  if (currentUser.isAdmin || isSuperAdmin(currentUser.email)) return true;
+  
+  // Criador pode editar seu próprio evento
+  if (currentUser.uid === creatorId) return true;
+  
+  // Usuários do mesmo cargo podem editar
+  return await hasSameRoleAsCreator(currentUser, creatorId);
+}
+
+/**
+ * Verifica se o usuário pode excluir um evento.
+ * Retorna true se:
+ * - É admin/super admin
+ * - É o criador do evento
+ * - Tem o mesmo cargo que o criador
+ */
+export async function canUserDeleteEvent(
+  currentUser: User | null,
+  creatorId: string
+): Promise<boolean> {
+  if (!currentUser) return false;
+  
+  // Super admins e admins podem excluir qualquer evento
+  if (currentUser.isAdmin || isSuperAdmin(currentUser.email)) return true;
+  
+  // Criador pode excluir seu próprio evento
+  if (currentUser.uid === creatorId) return true;
+  
+  // Usuários do mesmo cargo podem excluir
+  return await hasSameRoleAsCreator(currentUser, creatorId);
+}
+
+/**
+ * Limpa o cache de roles (útil quando roles são atualizadas)
+ */
+export function clearUserRolesCache(): void {
+  userRolesCache.clear();
 }

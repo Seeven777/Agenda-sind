@@ -6,7 +6,7 @@ import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle, Printer, Scale, Phone, Lock } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
+import { isBoss, isDiretoria, canSeePersonalEvents, canUserEditEvent, canUserDeleteEvent } from '../lib/permissions';
 
 export function EventDetails() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +16,8 @@ export function EventDetails() {
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -24,7 +26,16 @@ export function EventDetails() {
         const docRef = doc(db, 'events', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setEvent({ id: docSnap.id, ...docSnap.data() } as Event);
+          const eventData = { id: docSnap.id, ...docSnap.data() } as Event;
+          setEvent(eventData);
+          
+          // Verificar permissões de edição e exclusão
+          if (user) {
+            const editPermission = await canUserEditEvent(user, eventData.createdBy);
+            const deletePermission = await canUserDeleteEvent(user, eventData.createdBy);
+            setCanEdit(editPermission);
+            setCanDelete(deletePermission);
+          }
         } else {
           navigate('/');
         }
@@ -35,7 +46,7 @@ export function EventDetails() {
       }
     };
     fetchEvent();
-  }, [id, navigate]);
+  }, [id, navigate, user]);
 
   const handleDelete = async () => {
     if (!event || !id || !user) return;
@@ -414,7 +425,6 @@ export function EventDetails() {
     reuniao: 'Reunião', visita: 'Visita Sindical', processo: 'Audiência/Processo', evento: 'Evento Institucional', outro: 'Outro'
   };
 
-  const canEdit = user?.role === 'admin' || user?.uid === event.createdBy;
   const priority = priorityConfig[event.priority];
   const status = statusConfig[event.status];
 
@@ -443,37 +453,37 @@ export function EventDetails() {
         </button>
 
         {/* Header Card */}
-        <div className="dark-card p-6 relative overflow-hidden">
+        <div className="dark-card p-4 sm:p-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{ background: event.color || 'linear-gradient(90deg,var(--accent),#ff9a0d)' }} />
 
           <div className="flex flex-col sm:flex-row sm:items-start gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>{event.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>{event.title}</h1>
               <div className="flex flex-wrap gap-2 mt-3">
-                <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
-                <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: status.bg, color: status.color }}>{status.label}</span>
-                <span className="px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{categoryLabels[event.category] || event.category}</span>
+                <span className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
+                <span className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: status.bg, color: status.color }}>{status.label}</span>
+                <span className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{categoryLabels[event.category] || event.category}</span>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 action-buttons">
               {canEdit && event.status !== 'concluido' && (
-                <button onClick={handleComplete} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+                <button onClick={handleComplete} className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
                   <CheckCircle className="w-4 h-4" />Concluir
                 </button>
               )}
               {canEdit && (
-                <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <Trash2 className="w-4 h-4" />Excluir
                 </button>
               )}
-              <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(100,116,139,0.1)', color: '#64748b', border: '1px solid rgba(100,116,139,0.2)' }}>
+              <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'rgba(100,116,139,0.1)', color: '#64748b', border: '1px solid rgba(100,116,139,0.2)' }}>
                 <Printer className="w-4 h-4" />Imprimir
               </button>
-              <a href={googleCalendarUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
+              <a href={googleCalendarUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
                 <Calendar className="w-4 h-4" />Agenda
               </a>
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all" style={{ background: 'rgba(37,211,102,0.1)', color: '#25d366', border: '1px solid rgba(37,211,102,0.2)' }}>
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'rgba(37,211,102,0.1)', color: '#25d366', border: '1px solid rgba(37,211,102,0.2)' }}>
                 <MessageCircle className="w-4 h-4" />WhatsApp
               </a>
             </div>
@@ -481,24 +491,26 @@ export function EventDetails() {
         </div>
 
         {/* Details Card */}
-        <div className="dark-card p-6 space-y-0">
-          <InfoRow icon={Calendar} label="Data de Início" value={formatDateLocal(event.date)} />
-          <InfoRow icon={Clock} label="Hora de Início" value={event.time} />
-          {(event.endDate || event.endTime) && (
-            <>
-              {event.endDate && <InfoRow icon={Calendar} label="Data de Término" value={formatDateLocal(event.endDate)} />}
-              {event.endTime && <InfoRow icon={Clock} label="Hora de Término" value={event.endTime} />}
-            </>
-          )}
-          <InfoRow icon={MapPin} label="Local" value={event.location}
-            extra={event.location ? (
-              <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-semibold mt-1 transition-colors" style={{ color: 'var(--accent)' }}>
-                <ExternalLink className="w-3 h-3" />Ver no Google Maps
-              </a>
-            ) : undefined}
-          />
-          <InfoRow icon={User} label="Criado por" value={event.creatorName} />
-          {event.cnpj && <InfoRow icon={Building2} label="CNPJ" value={event.cnpj} />}
+        <div className="dark-card p-4 sm:p-6 space-y-0">
+          <div className="info-row">
+            <InfoRow icon={Calendar} label="Data de Início" value={formatDateLocal(event.date)} />
+            <InfoRow icon={Clock} label="Hora de Início" value={event.time} />
+            {(event.endDate || event.endTime) && (
+              <>
+                {event.endDate && <InfoRow icon={Calendar} label="Data de Término" value={formatDateLocal(event.endDate)} />}
+                {event.endTime && <InfoRow icon={Clock} label="Hora de Término" value={event.endTime} />}
+              </>
+            )}
+            <InfoRow icon={MapPin} label="Local" value={event.location}
+              extra={event.location ? (
+                <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-semibold mt-1 transition-colors" style={{ color: 'var(--accent)' }}>
+                  <ExternalLink className="w-3 h-3" />Ver no Google Maps
+                </a>
+              ) : undefined}
+            />
+            <InfoRow icon={User} label="Criado por" value={event.creatorName} />
+            {event.cnpj && <InfoRow icon={Building2} label="CNPJ" value={event.cnpj} />}
+          </div>
         </div>
 
         {/* Description */}

@@ -2,6 +2,7 @@
 
 /* ============================================
    TEMA PREMIUM - SINDPETSHOP
+   Mobile-First Design
    ============================================ */
 
 :root {
@@ -40,6 +41,8 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ====== Animations ====== */
@@ -406,10 +409,18 @@ select option {
 
 /* ====== Mobile Optimizations ====== */
 @media (max-width: 640px) {
+  /* Main content padding */
+  .max-w-6xl.mx-auto.px-4 {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  
+  /* Reduce card radius on mobile */
   .dark-card {
-    border-radius: 14px;
+    border-radius: 16px;
     border: none;
     box-shadow: none;
+    padding: 16px;
   }
   
   .gradient-hero {
@@ -417,24 +428,27 @@ select option {
     padding: 20px !important;
   }
   
+  /* Better button sizes for touch */
   .btn-premium {
-    padding: 10px 18px;
-    font-size: 13px;
-    min-height: 44px;
-    min-width: 44px;
+    padding: 14px 20px;
+    font-size: 15px;
+    min-height: 52px;
+    min-width: 52px;
+    border-radius: 14px;
   }
   
   /* Touch-friendly inputs */
   .dark-input {
-    padding: 14px 16px;
+    padding: 16px 18px;
     font-size: 16px; /* Previne zoom em iOS */
-    min-height: 48px;
+    min-height: 52px;
+    border-radius: 12px;
   }
   
   /* Better touch targets */
   button, a, [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 48px;
+    min-width: 48px;
   }
   
   /* Prevent text selection on UI elements */
@@ -446,13 +460,6 @@ select option {
   /* Improve scroll on mobile */
   body {
     -webkit-overflow-scrolling: touch;
-  }
-  
-  /* Full-width on mobile */
-  .space-y-4 > * + *,
-  .space-y-5 > * + *,
-  .space-y-6 > * + * {
-    margin-top: 12px;
   }
   
   /* Better form spacing */
@@ -470,6 +477,43 @@ select option {
     width: 0px;
     height: 0px;
     display: none;
+  }
+  
+  /* Stats cards - full width on mobile */
+  .grid.grid-cols-2.lg\\:grid-cols-4 {
+    gap: 12px;
+  }
+  
+  .grid.grid-cols-2.lg\\:grid-cols-4 > * {
+    padding: 16px !important;
+  }
+  
+  /* Event cards */
+  .dark-card.overflow-hidden.p-4 {
+    padding: 16px !important;
+  }
+  
+  /* Modal improvements */
+  .max-w-3xl {
+    max-width: calc(100% - 16px);
+    margin: 8px;
+  }
+  
+  /* Form sections */
+  .space-y-4 > * + * {
+    margin-top: 16px;
+  }
+  
+  /* Page sections */
+  .space-y-6 > * + * {
+    margin-top: 20px;
+  }
+  
+  /* Filter buttons */
+  .flex.flex-wrap.gap-2 button {
+    padding: 12px 16px;
+    font-size: 14px;
+    border-radius: 12px;
   }
 }
 
@@ -592,4 +636,581 @@ select option {
 
 .rbc-day-bg {
   border-color: var(--border-subtle);
+}
+
+/* ====== Calendar Improvements ====== */
+.rbc-month-view {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Header dos dias da semana */
+.rbc-header {
+  padding: 12px 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--bg-card) !important;
+}
+
+/* Células do calendário */
+.rbc-day-bg {
+  transition: background-color 0.15s ease;
+}
+
+.rbc-day-bg:hover {
+  background: var(--bg-card-hover) !important;
+}
+
+/* Hoje - destaque */
+.rbc-today {
+  background: var(--accent-soft) !important;
+}
+
+.rbc-today .rbc-button {
+  font-weight: 700 !important;
+  color: var(--accent) !important;
+}
+
+/* Número do dia */
+.rbc-date-cell {
+  padding: 4px 6px !important;
+  text-align: center;
+}
+
+.rbc-date-cell > a {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  color: var(--text-primary) !important;
+}
+
+/* Dias fora do mês */
+.rbc-off-range-bg {
+  background: var(--bg-primary) !important;
+  opacity: 0.6;
+}
+
+.rbc-off-range-bg .rbc-date-cell > a {
+  color: var(--text-muted) !important;
+}
+
+/* Evento no calendário */
+.rbc-event {
+  border: none !important;
+  font-weight: 600 !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rbc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Mais eventos no mesmo dia */
+.rbc-show-more {
+  font-weight: 700 !important;
+  font-size: 10px !important;
+  color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* Tooltip/Popup */
+.rbc-overlay {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+  padding: 8px !important;
+}
+
+.rbc-overlay-header {
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  padding-bottom: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+/* ====== Mobile Calendar Specific ====== */
+@media (max-width: 640px) {
+  .rbc-header {
+    padding: 8px 2px !important;
+    font-size: 10px !important;
+  }
+  
+  .rbc-date-cell > a {
+    font-size: 12px !important;
+  }
+  
+  .rbc-event {
+    font-size: 9px !important;
+    padding: 1px 3px !important;
+  }
+  
+  /* Melhorar área de toque nos dias */
+  .rbc-day-bg {
+    min-height: 60px;
+  }
+  
+  /* Indicador visual de eventos no dia */
+  .rbc-month-row + .rbc-month-row {
+    border-top: 1px solid var(--border-subtle);
+  }
+  
+  /* Calendar toolbar adjustments */
+  .rbc-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .rbc-toolbar button {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+}
+
+/*Modo escuro calendário*/
+[data-theme='light'] .rbc-today {
+  background: rgba(255,111,15,0.08) !important;
+}
+
+[data-theme='light'] .rbc-off-range-bg {
+  background: #f8f8fc !important;
+}
+
+[data-theme='light'] .rbc-header {
+  background: #f0f0f8 !important;
+}
+
+/* ====== Mobile Bottom Navigation ====== */
+nav.fixed.bottom-0 {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+nav.fixed.bottom-0 .flex.items-center.justify-around {
+  gap: 4px;
+}
+
+nav.fixed.bottom-0 a,
+nav.fixed.bottom-0 button {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+nav.fixed.bottom-0 a:active,
+nav.fixed.bottom-0 button:active {
+  transform: scale(0.95);
+}
+
+nav.fixed.bottom-0 a.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+nav.fixed.bottom-0 a:not(.active),
+nav.fixed.bottom-0 button {
+  color: var(--text-muted);
+}
+
+nav.fixed.bottom-0 a:not(.active):hover,
+nav.fixed.bottom-0 button:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-secondary);
+}
+
+/* ====== Light mode bottom nav ====== */
+[data-theme='light'] nav.fixed.bottom-0 {
+  background: rgba(255,255,255,0.95) !important;
+  border-top: 1px solid rgba(0,0,0,0.06) !important;
+}
+
+/* ====== Mobile Header User Info ====== */
+@media (max-width: 1023px) {
+  header.glass-nav .flex.items-center.gap-2.p-2.rounded-xl {
+    padding: 8px 12px;
+    gap: 10px;
+  }
+  
+  header.glass-nav .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+  
+  header.glass-nav .badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+}
+
+/* ====== Safe area padding for notched phones ====== */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .pb-nav {
+    padding-bottom: max(80px, calc(64px + env(safe-area-inset-bottom)));
+  }
+}
+
+/* ====== Mobile menu user card enhancement ====== */
+.mobile-menu-user-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 16px;
+  margin: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mobile-menu-user-card .avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 20px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.mobile-menu-user-card .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-menu-user-card .name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-menu-user-card .email {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.mobile-menu-user-card .badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+/* ====== Active states for mobile nav items ====== */
+.mobile-nav-active {
+  position: relative;
+}
+
+.mobile-nav-active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 99px;
+}
+
+/* ====== Mobile Create Button (FAB in bottom nav) ====== */
+.mobile-create-btn {
+  width: 60px !important;
+  height: 60px !important;
+  min-width: 60px !important;
+  min-height: 60px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  animation: pulse-glow-mobile 3s infinite;
+}
+
+@keyframes pulse-glow-mobile {
+  0%, 100% { 
+    box-shadow: 0 4px 20px rgba(255,111,15,0.4);
+  }
+  50% { 
+    box-shadow: 0 6px 28px rgba(255,111,15,0.6);
+  }
+}
+
+/* Override Tailwind with important to ensure circular shape */
+.mobile-create-btn.rounded-full {
+  border-radius: 9999px !important;
+}
+
+/* ====== Desktop Novo Evento Button ====== */
+@media (min-width: 1024px) {
+  .btn-new-event-desktop {
+    background: linear-gradient(135deg, var(--accent) 0%, #ff9a0d 100%) !important;
+    color: white !important;
+    font-weight: 700 !important;
+    padding: 12px 20px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 16px rgba(255,111,15,0.3) !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .btn-new-event-desktop:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255,111,15,0.4) !important;
+  }
+  
+  .btn-new-event-desktop:active {
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   MOBILE-SPECIFIC COMPONENT STYLES
+   ============================================ */
+
+/* === MOBILE PAGE LAYOUT === */
+@media (max-width: 640px) {
+  /* Header */
+  .page-header h1 {
+    font-size: 1.5rem !important;
+    line-height: 1.3;
+  }
+  
+  /* Stats cards */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .stats-card {
+    padding: 16px !important;
+  }
+  
+  .stats-card .text-2xl {
+    font-size: 1.75rem !important;
+  }
+  
+  .stats-card .text-xs {
+    font-size: 0.7rem !important;
+  }
+  
+  /* Section headers */
+  .section-header {
+    padding: 14px 16px !important;
+  }
+  
+  .section-header h2 {
+    font-size: 1rem !important;
+  }
+  
+  /* Action buttons row */
+  .action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .action-buttons > * {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+  
+  .action-buttons .btn-premium {
+    flex: 1 1 100%;
+  }
+  
+  /* Event cards */
+  .event-card {
+    padding: 16px !important;
+  }
+  
+  .event-card .badge-row {
+    gap: 8px;
+  }
+  
+  .event-card .event-title {
+    font-size: 1rem !important;
+    line-height: 1.4;
+  }
+  
+  .event-card .event-info {
+    font-size: 0.8rem !important;
+  }
+  
+  /* Filter chips */
+  .filter-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .filter-chip {
+    flex-shrink: 0;
+    padding: 10px 16px !important;
+    font-size: 0.85rem !important;
+    border-radius: 10px !important;
+  }
+  
+  /* Info rows in details */
+  .info-row {
+    padding: 14px 0 !important;
+  }
+  
+  .info-row .icon-wrapper {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+  }
+  
+  .info-row .label {
+    font-size: 0.65rem !important;
+  }
+  
+  .info-row .value {
+    font-size: 0.9rem !important;
+  }
+  
+  /* Modal adjustments */
+  .modal-container {
+    max-height: 90vh;
+    border-radius: 20px !important;
+  }
+  
+  .modal-header {
+    padding: 16px !important;
+  }
+  
+  .modal-content {
+    padding: 16px !important;
+  }
+  
+  .modal-footer {
+    padding: 16px !important;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .modal-footer button {
+    width: 100%;
+  }
+}
+
+/* === IMPROVED SPACING FOR MOBILE === */
+@media (max-width: 768px) {
+  /* Page padding */
+  .mobile-page {
+    padding: 16px !important;
+  }
+  
+  /* Stack elements vertically */
+  .stack-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  /* Hide on mobile */
+  .hide-mobile {
+    display: none !important;
+  }
+  
+  /* Full width buttons */
+  .btn-full-mobile {
+    width: 100% !important;
+  }
+  
+  /* Larger touch targets */
+  .touch-target {
+    min-height: 52px !important;
+    min-width: 52px !important;
+  }
+  
+  /* Better spacing for form groups */
+  .form-group {
+    margin-bottom: 20px !important;
+  }
+  
+  .form-group label {
+    margin-bottom: 8px !important;
+    font-size: 0.9rem !important;
+  }
+  
+  /* Category/Priority buttons */
+  .choice-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  
+  .choice-btn {
+    padding: 14px 8px !important;
+    font-size: 0.85rem !important;
+    text-align: center;
+  }
+  
+  /* Expandable sections */
+  .expandable-header {
+    padding: 16px !important;
+  }
+  
+  .expandable-content {
+    padding: 0 16px 16px !important;
+  }
+}
+
+/* === EXTRA MOBILE ADJUSTMENTS === */
+@media (max-width: 480px) {
+  /* Even smaller padding */
+  .page-container {
+    padding: 12px !important;
+  }
+  
+  /* Compact stats */
+  .stats-grid {
+    gap: 8px;
+  }
+  
+  /* Smaller action buttons */
+  .action-btn {
+    padding: 10px 14px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  /* Compact info */
+  .compact-info {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Hide labels on very small screens */
+  .hide-label-small {
+    font-size: 0 !important;
+  }
+  
+  .hide-label-small svg {
+    margin: 0 !important;
+  }
 }

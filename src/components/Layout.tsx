@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, Search, Sun, Moon, Settings, Crown, Home, ChevronRight } from 'lucide-react';
+import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, BellOff, Search, Sun, Moon, Settings, Crown, Home, ChevronRight, Shield, User, BarChart3 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 import { requestNotificationPermission, db } from '../lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ProfileModal } from './ProfileModal';
+import { NotificationSettings } from './NotificationSettings';
 import { isSuperAdmin, isBoss, isDiretoria } from '../lib/permissions';
+import { useReport } from '../contexts/ReportContext';
+import { getNotificationPermission } from '../lib/notifications';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -16,9 +19,17 @@ export function Layout() {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [localUser, setLocalUser] = useState(user);
 
   useEffect(() => { setLocalUser(user); }, [user]);
+  
+  // Listen for event to open notification settings
+  useEffect(() => {
+    const handleOpenNotifications = () => setShowNotifications(true);
+    window.addEventListener('openNotificationSettings', handleOpenNotifications);
+    return () => window.removeEventListener('openNotificationSettings', handleOpenNotifications);
+  }, []);
 
   useEffect(() => {
     const setupNotifications = async () => {
@@ -49,7 +60,7 @@ export function Layout() {
 
   // Menu Privado (para o patrão e diretoria)
   const bossNavigation = (isBoss(user?.email) || isDiretoria(user)) ? [
-    { name: 'Minha Agenda', href: '/private-dashboard', icon: Crown },
+    { name: 'Agenda Particular da Diretoria', href: '/private-dashboard', icon: Crown },
   ] : [];
 
   // Menu completo
@@ -99,6 +110,22 @@ export function Layout() {
     );
   };
 
+  // Helper para obter badge de cargo
+  const getRoleBadge = () => {
+    if (isSuperAdmin(user?.email)) return { label: 'Admin', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
+    if (isBoss(user?.email)) return { label: 'Proprietário', color: 'var(--accent)', bg: 'rgba(255,111,15,0.15)' };
+    if (isDiretoria(user)) return { label: 'Diretoria', color: '#a855f7', bg: 'rgba(168,85,247,0.15)' };
+    const roleLabels: Record<string, string> = {
+      juridico: 'Jurídico',
+      comunicacao: 'Comunicação',
+      fiscalizacao: 'Fiscalização',
+      administrativo: 'Administrativo',
+    };
+    return { label: roleLabels[user?.role || ''] || user?.role || 'Usuário', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
+  };
+
+  const roleBadge = getRoleBadge();
+
   return (
     <>
       <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
@@ -106,7 +133,8 @@ export function Layout() {
         {isMobileMenuOpen && (
           <div className="fixed inset-0 z-50 lg:hidden">
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
-            <div className="fixed inset-y-0 left-0 w-72 flex flex-col shadow-2xl animate-slide-in" style={{ background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-subtle)' }}>
+            <div className="fixed inset-y-0 left-0 w-80 max-w-[85vw] flex flex-col shadow-2xl animate-slide-in" style={{ background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-subtle)' }}>
+              {/* Header com logo */}
               <div className="flex items-center justify-between h-16 px-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <Link to="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
                   <img src="/logo.png" alt="SindPetShop-SP" className="h-8 w-auto" />
@@ -116,28 +144,43 @@ export function Layout() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              
+              {/* Menu de navegação */}
               <nav className="flex-1 px-4 py-6 space-y-1">
                 {navigation.map(item => <NavLink key={item.name} item={item} onClick={() => setIsMobileMenuOpen(false)} />)}
               </nav>
+              
+              {/* Seção do usuário */}
               <div className="p-4 space-y-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                {/* Card do usuário */}
                 <div 
-                  className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:opacity-80" 
-                  style={{ background: 'var(--bg-card)' }} 
+                  className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all hover:opacity-80 active:scale-[0.98]" 
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }} 
                   onClick={() => { setIsMobileMenuOpen(false); setShowProfile(true); }}
                 >
-                  <Avatar size="md" />
+                  <Avatar size="lg" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{localUser?.name}</p>
-                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{localUser?.role}</p>
+                    <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>{localUser?.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span 
+                        className="text-xs font-semibold px-2 py-0.5 rounded-lg"
+                        style={{ background: roleBadge.bg, color: roleBadge.color }}
+                      >
+                        {roleBadge.label}
+                      </span>
+                    </div>
+                    <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-muted)' }}>{localUser?.email}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                  <ChevronRight className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
                 </div>
+                
+                {/* Botão de logout */}
                 <button 
                   onClick={handleLogout} 
-                  className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
+                  className="flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
                   style={{ color: '#ef4444' }}
                 >
-                  <LogOut className="mr-3 w-4 h-4" />
+                  <LogOut className="mr-3 w-5 h-5" />
                   Sair da conta
                 </button>
               </div>
@@ -166,7 +209,19 @@ export function Layout() {
             </div>
             
             {/* User Section */}
-            <div className="p-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+              {/* Botão Relatório - visível apenas para Admin/Diretoria */}
+              {(isSuperAdmin(user?.email) || isBoss(user?.email) || isDiretoria(user)) && (
+                <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
+                  className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-80"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                >
+                  <BarChart3 className="mr-2 w-4 h-4" />
+                  Relatório
+                </button>
+              )}
+              
               <div 
                 className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:opacity-80" 
                 style={{ background: 'var(--bg-card)' }} 
@@ -175,12 +230,17 @@ export function Layout() {
                 <Avatar size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{localUser?.name}</p>
-                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{localUser?.role}</p>
+                  <span 
+                    className="text-xs font-medium"
+                    style={{ color: roleBadge.color }}
+                  >
+                    {roleBadge.label}
+                  </span>
                 </div>
               </div>
               <button 
                 onClick={handleLogout} 
-                className="flex items-center w-full mt-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
+                className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
                 style={{ color: '#ef4444' }}
               >
                 <LogOut className="mr-2 w-4 h-4" />
@@ -192,39 +252,63 @@ export function Layout() {
 
         {/* Main Content */}
         <div className="flex flex-col flex-1 min-w-0">
-          {/* Header */}
-          <header className="glass-nav sticky top-0 z-30 flex items-center h-14 px-4 gap-3">
-            <button 
-              onClick={() => setIsMobileMenuOpen(true)} 
-              className="lg:hidden p-2 rounded-lg transition-colors" 
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-card)' }}
+          {/* Mobile Header - Melhorado */}
+          <header className="glass-nav sticky top-0 z-30 flex items-center h-16 px-2 gap-2 lg:hidden">
+            {/* Logo */}
+            <Link 
+              to="/" 
+              className="flex items-center gap-2 flex-shrink-0"
             >
-              <Menu className="w-5 h-5" />
+              <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
+              <span className="text-base font-bold" style={{ color: 'var(--accent)' }}>Agenda</span>
+            </Link>
+            
+            {/* Spacer */}
+            <div className="flex-1" />
+            
+            {/* Report Button - Mobile */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent)' }}
+              title="Relatório"
+            >
+              <BarChart3 className="w-4 h-4" />
             </button>
             
-            <div className="flex items-center gap-2 lg:hidden">
-              <Link to="/" className="flex items-center gap-2">
-                <img src="/logo.png" alt="Logo" className="h-6 w-auto" />
-                <span className="font-bold text-sm" style={{ color: 'var(--accent)' }}>Agenda Sind</span>
-              </Link>
-            </div>
-            
-            <div className="flex-1" />
-
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
               title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
+          </header>
 
-            {/* Avatar (desktop) */}
-            <div className="hidden lg:block">
-              <Avatar size="sm" onClick={() => setShowProfile(true)} />
-            </div>
+          {/* Desktop Header */}
+          <header className="hidden lg:flex items-center h-14 px-6 gap-3" style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+            <div className="flex-1" />
+            
+            {/* Notification Settings Button */}
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 relative"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent)' }}
+              title="Configurações de Notificação"
+            >
+              <Bell className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={toggleTheme}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <Avatar size="sm" onClick={() => setShowProfile(true)} />
           </header>
 
           {/* Content */}
@@ -234,10 +318,77 @@ export function Layout() {
             </div>
           </main>
 
-          {/* Mobile FAB */}
-          <Link to="/events/create" className="fab lg:hidden fixed bottom-6 left-6 z-40">
-            <Plus className="w-6 h-6 text-white" />
-          </Link>
+          {/* Mobile Bottom Navigation with Create Button */}
+          <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 px-2 pb-2 safe-area-bottom" style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="flex items-center justify-between py-2 px-1">
+              {/* Início */}
+              <Link
+                to="/"
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                )}
+              >
+                <Home className="w-6 h-6" />
+                <span className="text-[10px] font-medium">Início</span>
+              </Link>
+              
+              {/* Calendário */}
+              <Link
+                to="/calendar"
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/calendar' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                )}
+              >
+                <Calendar className="w-6 h-6" />
+                <span className="text-[10px] font-medium">Calendário</span>
+              </Link>
+              
+              {/* Botão Central de Criar Evento - Maior e mais visível */}
+              <Link
+                to="/events/create"
+                className="flex flex-col items-center justify-center w-16 h-16 -mt-8 rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95 mobile-create-btn"
+                style={{ background: 'linear-gradient(135deg, var(--accent), #ff9a0d)', boxShadow: '0 4px 24px rgba(255,111,15,0.5)' }}
+              >
+                <Plus className="w-8 h-8 text-white" strokeWidth={2.5} />
+              </Link>
+              
+              {/* Agenda Particular ou Próximos */}
+              {bossNavigation.length > 0 ? (
+                <Link
+                  to="/private-dashboard"
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                    location.pathname === '/private-dashboard' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                  )}
+                >
+                  <Crown className="w-6 h-6" />
+                  <span className="text-[10px] font-medium">Particular</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/"
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] text-[var(--text-muted)]"
+                >
+                  <Calendar className="w-6 h-6" />
+                  <span className="text-[10px] font-medium">Hoje</span>
+                </Link>
+              )}
+              
+              {/* Perfil */}
+              <button
+                onClick={() => setShowProfile(true)}
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target"
+              >
+                <User className="w-6 h-6" />
+                <span className="text-[10px] font-medium text-[var(--text-muted)]">Perfil</span>
+              </button>
+            </div>
+          </nav>
+
+          {/* Spacer for mobile bottom nav */}
+          <div className="lg:hidden h-16" />
         </div>
       </div>
 
@@ -249,6 +400,12 @@ export function Layout() {
           onUpdate={handleProfileUpdate}
         />
       )}
+      
+      {/* Notification Settings Modal */}
+      <NotificationSettings 
+        isOpen={showNotifications} 
+        onClose={() => setShowNotifications(false)} 
+      />
     </>
   );
 }

@@ -117,14 +117,16 @@ export function CalendarView() {
     return {
       style: {
         backgroundColor,
-        borderRadius: '8px',
-        opacity: 0.95,
+        borderRadius: '6px',
+        opacity: 1,
         color: 'white',
         border: '0px',
         display: 'block',
-        fontSize: isMobile ? '11px' : '12px',
-        fontWeight: 600,
-        padding: isMobile ? '2px 6px' : '2px 8px',
+        fontSize: isMobile ? '10px' : '11px',
+        fontWeight: 700,
+        padding: isMobile ? '2px 4px' : '2px 6px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+        marginBottom: '1px',
       }
     };
   };
@@ -187,10 +189,6 @@ export function CalendarView() {
             {events.length} evento{events.length !== 1 ? 's' : ''} no total
           </p>
         </div>
-        <Link to="/events/create" className="btn-premium inline-flex items-center gap-2 text-sm py-3 px-4 self-start sm:self-auto touch-manipulation">
-          <Plus className="w-4 h-4" />
-          Novo
-        </Link>
       </div>
 
       {/* View Selector Cards */}

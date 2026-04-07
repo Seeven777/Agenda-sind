@@ -149,22 +149,22 @@ export function EventCard({ event, onEdit }: EventCardProps) {
   };
 
   return (
-    <Link to={`/events/${event.id}`} className="block group">
+    <Link to={`/events/${event.id}`} className="block group event-card">
       <div
-        className="dark-card overflow-hidden p-4 transition-all duration-200 hover:scale-[1.01]"
+        className="dark-card overflow-hidden p-4 sm:p-5 transition-all duration-200 hover:scale-[1.01]"
       >
         {/* Top: Category badge + Date */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between mb-3 gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span 
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold"
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold"
               style={{ background: category.bg, color: category.color }}
             >
               {category.label}
             </span>
             {event.isRecurring && (
               <span 
-                className="px-2 py-0.5 rounded-lg text-[10px] font-semibold flex items-center gap-1"
+                className="px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1"
                 style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
               >
                 <Repeat className="w-3 h-3" />
@@ -173,7 +173,7 @@ export function EventCard({ event, onEdit }: EventCardProps) {
             )}
           </div>
           <span 
-            className="text-xs font-medium px-2 py-1 rounded-lg"
+            className="text-xs font-medium px-2.5 py-1 rounded-lg flex-shrink-0"
             style={{ 
               background: isToday ? 'var(--accent-soft)' : 'var(--bg-input)', 
               color: isToday ? 'var(--accent)' : 'var(--text-muted)'
@@ -184,18 +184,18 @@ export function EventCard({ event, onEdit }: EventCardProps) {
         </div>
 
         {/* Title */}
-        <h3 className="font-semibold text-base mb-3 line-clamp-2 group-hover:text-[var(--accent)] transition-colors" style={{ color: 'var(--text-primary)' }}>
+        <h3 className="font-semibold text-base sm:text-lg mb-3 line-clamp-2 group-hover:text-[var(--accent)] transition-colors" style={{ color: 'var(--text-primary)' }}>
           {event.title}
         </h3>
 
         {/* Info Grid */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{event.time}{event.endTime ? ` - ${event.endTime}` : ''}</span>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+            <Clock className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">{event.time}{event.endTime ? ` - ${event.endTime}` : ''}</span>
           </div>
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+            <MapPin className="w-4 h-4 flex-shrink-0" />
             <span className="truncate">{event.location}</span>
           </div>
         </div>
@@ -204,13 +204,13 @@ export function EventCard({ event, onEdit }: EventCardProps) {
         <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-2">
             <span 
-              className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wide"
+              className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide"
               style={{ background: priority.bg, color: priority.color }}
             >
               {priority.label}
             </span>
             <span 
-              className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wide"
+              className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide"
               style={{ background: status.bg, color: status.color }}
             >
               {status.label}
@@ -220,7 +220,7 @@ export function EventCard({ event, onEdit }: EventCardProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="p-2 rounded-lg transition-all hover:bg-white/5"
+              className="p-2.5 rounded-xl transition-all hover:bg-white/5 touch-target"
               style={{ color: 'var(--text-muted)' }}
               title="Imprimir"
             >
@@ -229,7 +229,7 @@ export function EventCard({ event, onEdit }: EventCardProps) {
             {isOwner && (
               <button
                 onClick={handleEdit}
-                className="p-2 rounded-lg transition-all flex items-center gap-1"
+                className="p-2.5 rounded-xl transition-all flex items-center gap-1.5 touch-target"
                 style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
                 title="Editar"
               >
@@ -238,7 +238,7 @@ export function EventCard({ event, onEdit }: EventCardProps) {
               </button>
             )}
             <span 
-              className="p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+              className="p-2.5 rounded-xl transition-all opacity-0 group-hover:opacity-100"
               style={{ color: 'var(--accent)' }}
             >
               <ArrowRight className="w-4 h-4" />
@@ -248,11 +248,11 @@ export function EventCard({ event, onEdit }: EventCardProps) {
 
         {/* Tags */}
         {event.tags && event.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="flex flex-wrap gap-2 mt-3">
             {event.tags.slice(0, 3).map((tag, i) => (
               <span 
                 key={i} 
-                className="px-2 py-0.5 rounded-md text-[10px] font-medium"
+                className="px-2.5 py-1 rounded-lg text-xs font-medium"
                 style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}
               >
                 #{tag}

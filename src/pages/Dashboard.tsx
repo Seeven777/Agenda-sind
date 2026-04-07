@@ -298,6 +298,16 @@ export function Dashboard() {
     }
   }, [reportMonth, showReportModal]);
 
+  // Listener para abrir relatório via evento do header mobile
+  useEffect(() => {
+    const handleOpenReport = () => {
+      setShowReportModal(true);
+      generateReport(reportMonth);
+    };
+    window.addEventListener('open-report', handleOpenReport);
+    return () => window.removeEventListener('open-report', handleOpenReport);
+  }, [reportMonth]);
+
   const categories = [
     { key: 'all', label: 'Todos', color: 'var(--accent)' },
     { key: 'reuniao', label: 'Reuniões', color: '#3b82f6' },
@@ -340,27 +350,22 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight page-header" style={{ color: 'var(--text-primary)' }}>
             Olá, {user?.name?.split(' ')[0]} 👋
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleShowReport}
-            className="inline-flex items-center gap-2 text-sm py-3 px-4 rounded-xl font-medium transition-all"
-            style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
-          >
-            <BarChart3 className="w-4 h-4" />
-            Relatório
-          </button>
-          <Link to="/events/create" className="btn-premium inline-flex items-center gap-2 text-sm self-start">
-            <Plus className="w-4 h-4" />
-            Novo Evento
-          </Link>
-        </div>
+        {/* Novo Evento - Desktop - localização mais intuitiva */}
+        <Link 
+          to="/events/create" 
+          className="hidden lg:inline-flex items-center gap-3 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-105 active:scale-95"
+          style={{ background: 'linear-gradient(135deg, var(--accent), #ff9a0d)', color: 'white', boxShadow: '0 4px 16px rgba(255,111,15,0.3)' }}
+        >
+          <Plus className="w-5 h-5" />
+          Novo Evento
+        </Link>
       </div>
 
       {/* Stats Cards */}
@@ -428,117 +433,129 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Today's Events */}
+      {/* Events Section - Shows filtered when filtering, or today's events when not */}
       <div className="dark-card overflow-hidden">
-        <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
-          <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Eventos de Hoje</h2>
-          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
-            {todayFiltered.length}
+        <div className="px-5 py-4 flex items-center justify-between lg:flex" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="hidden lg:flex items-center gap-3">
+            {filterCategory !== 'all' ? (
+              <>
+                <button
+                  onClick={() => setFilterCategory('all')}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {categories.find(c => c.key === filterCategory)?.label}
+                </h2>
+              </>
+            ) : (
+              <>
+                <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
+                <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Eventos de Hoje</h2>
+              </>
+            )}
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+            {filterCategory !== 'all' ? filteredAllEvents.length : todayFiltered.length}
           </span>
         </div>
         <div className="p-4">
-          {todayFiltered.length === 0 && !personalEventDays.has(todayStr) ? (
-            <div className="empty-state py-8">
-              <div className="empty-state-icon">
-                <Calendar className="w-7 h-7" style={{ color: 'var(--accent)' }} />
+          {/* When filtering, show filtered events from all time */}
+          {filterCategory !== 'all' ? (
+            filteredAllEvents.length === 0 ? (
+              <div className="empty-state py-8">
+                <div className="empty-state-icon">
+                  <Filter className="w-7 h-7" style={{ color: 'var(--accent)' }} />
+                </div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento nesta categoria</p>
+                <button onClick={() => setFilterCategory('all')} className="mt-3 text-sm font-medium" style={{ color: 'var(--accent)' }}>
+                  Ver todos os eventos →
+                </button>
               </div>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento para hoje</p>
-              <Link to="/events/create" className="mt-3 text-sm font-medium" style={{ color: 'var(--accent)' }}>
-                Criar novo evento →
-              </Link>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredAllEvents.slice(0, 20).map(event => <EventCard key={event.id} event={event} />)}
+                {filteredAllEvents.length > 20 && (
+                  <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Mostrando 20 de {filteredAllEvents.length} eventos
+                  </p>
+                )}
+              </div>
+            )
           ) : (
-            <div className="space-y-3">
-              {todayFiltered.map(event => <EventCard key={event.id} event={event} />)}
-              {personalEventDays.has(todayStr) && (
-                <div className="rounded-xl p-4 border border-dashed" style={{ background: 'rgba(239,68,68,0.1)', borderColor: '#ef4444' }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.2)' }}>
-                      <Lock className="w-5 h-5" style={{ color: '#ef4444' }} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: '#ef4444' }}>Dia Reservado</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Compromisso pessoal - indisponível</p>
+            /* When not filtering, show today's events */
+            todayFiltered.length === 0 && !personalEventDays.has(todayStr) ? (
+              <div className="empty-state py-8">
+                <div className="empty-state-icon">
+                  <Calendar className="w-7 h-7" style={{ color: 'var(--accent)' }} />
+                </div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento para hoje</p>
+                <Link to="/events/create" className="mt-3 text-sm font-medium" style={{ color: 'var(--accent)' }}>
+                  Criar novo evento →
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {todayFiltered.map(event => <EventCard key={event.id} event={event} />)}
+                {personalEventDays.has(todayStr) && (
+                  <div className="rounded-xl p-4 border border-dashed" style={{ background: 'rgba(239,68,68,0.1)', borderColor: '#ef4444' }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.2)' }}>
+                        <Lock className="w-5 h-5" style={{ color: '#ef4444' }} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: '#ef4444' }}>Dia Reservado</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Compromisso pessoal - indisponível</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {routeUrl && (
-          <div className="px-4 pb-4">
-            <a
-              href={routeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-medium transition-all"
-              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-            >
-              <Navigation2 className="w-4 h-4" />
-              Ver rota do dia no Maps
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* Upcoming Events */}
-      <div className="dark-card overflow-hidden">
-        <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <div className="w-2 h-2 rounded-full" style={{ background: '#3b82f6' }} />
-          <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Próximos Eventos</h2>
-          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>
-            {upcomingFiltered.length}
-          </span>
-        </div>
-        <div className="p-4">
-          {upcomingFiltered.length === 0 ? (
-            <div className="empty-state py-8">
-              <div className="empty-state-icon" style={{ background: 'rgba(59,130,246,0.15)' }}>
-                <Calendar className="w-7 h-7" style={{ color: '#3b82f6' }} />
+                )}
               </div>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento futuro</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {upcomingFiltered.map(event => <EventCard key={event.id} event={event} />)}
-            </div>
+            )
           )}
         </div>
+        {/* Show route button only when not filtering and has events with location */}
+        {!filterCategory.includes('all') || (filterCategory === 'all' && routeUrl) ? (
+          routeUrl && filterCategory === 'all' && (
+            <div className="px-4 pb-4">
+              <a
+                href={routeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-medium transition-all"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+              >
+                <Navigation2 className="w-4 h-4" />
+                Ver rota do dia no Maps
+              </a>
+            </div>
+          )
+        ) : null}
       </div>
 
-      {/* All Filtered Events */}
-      {filterCategory !== 'all' && (
-        <div id="filtered-events" className="dark-card overflow-hidden">
-          <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setFilterCategory('all')}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {categories.find(c => c.key === filterCategory)?.label}
-              </h2>
-            </div>
-            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-              {filteredAllEvents.length} evento{filteredAllEvents.length !== 1 ? 's' : ''}
+      {/* Upcoming Events - Only show when NOT filtering and on lg screens */}
+      {filterCategory === 'all' && (
+        <div className="hidden lg:block dark-card overflow-hidden">
+          <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <div className="w-2 h-2 rounded-full" style={{ background: '#3b82f6' }} />
+            <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Próximos Eventos</h2>
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>
+              {upcomingFiltered.length}
             </span>
           </div>
           <div className="p-4">
-            {filteredAllEvents.length === 0 ? (
+            {upcomingFiltered.length === 0 ? (
               <div className="empty-state py-8">
-                <div className="empty-state-icon">
-                  <Filter className="w-7 h-7" style={{ color: 'var(--text-muted)' }} />
+                <div className="empty-state-icon" style={{ background: 'rgba(59,130,246,0.15)' }}>
+                  <Calendar className="w-7 h-7" style={{ color: '#3b82f6' }} />
                 </div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento nesta categoria</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Nenhum evento futuro</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredAllEvents.slice(0, 20).map(event => <EventCard key={event.id} event={event} />)}
+              <div className="space-y-3">
+                {upcomingFiltered.map(event => <EventCard key={event.id} event={event} />)}
               </div>
             )}
           </div>

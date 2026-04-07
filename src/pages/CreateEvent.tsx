@@ -285,53 +285,53 @@ export function CreateEvent() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {/* Título - Large touch target */}
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Título *</label>
               <input 
                 type="text" 
                 {...register('title')} 
-                className="dark-input text-base py-3" 
+                className="dark-input text-base py-4" 
                 placeholder="Ex: Reunião com diretoria" 
               />
               {errors.title && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.title.message}</p>}
             </div>
 
             {/* Data e Hora - Full width on mobile */}
-            <div className="space-y-3">
-              <div>
+            <div className="space-y-4">
+              <div className="form-group">
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                   <Calendar className="w-4 h-4 inline mr-1" />Data *
                 </label>
-                <input type="date" {...register('date')} className="dark-input text-base py-3 w-full" />
+                <input type="date" {...register('date')} className="dark-input text-base py-4 w-full" />
                 {errors.date && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.date.message}</p>}
               </div>
-              <div>
+              <div className="form-group">
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                   <Clock className="w-4 h-4 inline mr-1" />Hora *
                 </label>
-                <input type="time" {...register('time')} className="dark-input text-base py-3 w-full" />
+                <input type="time" {...register('time')} className="dark-input text-base py-4 w-full" />
                 {errors.time && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.time.message}</p>}
               </div>
             </div>
 
             {/* Local */}
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                 <MapPin className="w-4 h-4 inline mr-1" />Local *
               </label>
               <input 
                 type="text" 
                 {...register('location')} 
-                className="dark-input text-base py-3" 
+                className="dark-input text-base py-4" 
                 placeholder="Endereço ou nome do local" 
               />
               {errors.location && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.location.message}</p>}
             </div>
 
             {/* Categoria - Mobile friendly buttons */}
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Categoria</label>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {categories.map(cat => (
@@ -339,11 +339,12 @@ export function CreateEvent() {
                     key={cat.value}
                     type="button"
                     onClick={() => setValue('category', cat.value as any)}
-                    className="py-3 px-2 rounded-xl text-xs font-medium transition-all active:scale-95 touch-manipulation"
+                    className="py-4 px-2 rounded-xl text-sm font-medium transition-all active:scale-95 touch-manipulation choice-btn"
                     style={{
                       background: watch('category') === cat.value ? cat.color : 'var(--bg-input)',
                       color: watch('category') === cat.value ? 'white' : 'var(--text-secondary)',
-                      border: watch('category') === cat.value ? 'none' : '1px solid var(--border-subtle)'
+                      border: watch('category') === cat.value ? 'none' : '1px solid var(--border-subtle)',
+                      minHeight: '48px'
                     }}
                   >
                     {cat.label}
@@ -353,19 +354,20 @@ export function CreateEvent() {
             </div>
 
             {/* Prioridade - Mobile friendly buttons */}
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Prioridade</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3 choice-buttons">
                 {priorities.map(p => (
                   <button
                     key={p.value}
                     type="button"
                     onClick={() => setValue('priority', p.value as any)}
-                    className="py-3 rounded-xl text-sm font-medium transition-all active:scale-95 touch-manipulation"
+                    className="py-4 rounded-xl text-sm font-semibold transition-all active:scale-95 touch-manipulation choice-btn"
                     style={{
                       background: watch('priority') === p.value ? p.color : 'var(--bg-input)',
                       color: watch('priority') === p.value ? 'white' : 'var(--text-secondary)',
-                      border: watch('priority') === p.value ? 'none' : '1px solid var(--border-subtle)'
+                      border: watch('priority') === p.value ? 'none' : '1px solid var(--border-subtle)',
+                      minHeight: '52px'
                     }}
                   >
                     {p.label}

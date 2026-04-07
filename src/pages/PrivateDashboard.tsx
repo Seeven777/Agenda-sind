@@ -86,17 +86,13 @@ export function PrivateDashboard() {
           </div>
           <div>
             <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
-              Minha Agenda
+              Agenda Particular da Diretoria
             </h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              Seus compromissos pessoais
+              Compromissos exclusivos da diretoria
             </p>
           </div>
         </div>
-        <Link to="/events/create" className="btn-premium hidden lg:inline-flex items-center gap-2 text-sm">
-          <Plus className="w-4 h-4" />
-          Novo Evento Pessoal
-        </Link>
       </div>
 
       {/* Info Card */}

@@ -18,6 +18,14 @@ service cloud.firestore {
           (request.auth.token.email == "gustavo13470@gmail.com" && request.auth.token.email_verified == true));
     }
 
+    // Verifica se o usuário atual tem o mesmo cargo que o criador do evento
+    // Isso permite que usuários do mesmo departamento editem/excluam eventos uns dos outros
+    function hasSameRoleAsCreator() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 
+        get(/databases/$(database)/documents/users/$(resource.data.createdBy)).data.role;
+    }
+
     function hasRequiredFields(fields) {
       return request.resource.data.keys().hasAll(fields);
     }
@@ -79,10 +87,20 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && hasRequiredFields(['title', 'date', 'time', 'location', 'priority', 'status', 'category', 'createdBy', 'creatorName']) &&
                     isValidEvent(request.resource.data) && request.resource.data.createdBy == request.auth.uid;
+      
+      // Permite update se:
+      // - Usuário é admin
+      // - Usuário é o criador do evento
+      // - Usuário tem o mesmo cargo que o criador (ex: Zelia e Marli, ambas do jurídico)
       allow update: if isAuthenticated() && isValidEvent(request.resource.data) &&
-                    (request.resource.data.createdBy == resource.data.createdBy) &&
-                    (resource.data.createdBy == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
+                    (resource.data.createdBy == request.auth.uid || isAdmin() || hasSameRoleAsCreator());
+      
+      // Permite delete se:
+      // - Usuário é admin
+      // - Usuário é o criador do evento
+      // - Usuário tem o mesmo cargo que o criador
+      allow delete: if isAuthenticated() && 
+                    (resource.data.createdBy == request.auth.uid || isAdmin() || hasSameRoleAsCreator());
     }
 
     match /activity_logs/{logId} {

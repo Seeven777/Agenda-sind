@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette, ArrowLeft, Scale, User, Phone, MapPinIcon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { canUserEditEvent } from '../lib/permissions';
 
 // Schema para detalhes do processo
 const processDetailsSchema = z.object({
@@ -57,6 +58,8 @@ export function EditEvent() {
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState<EventFormData | null>(null);
   const [showRecurrence, setShowRecurrence] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [creatorId, setCreatorId] = useState<string>('');
 
   const { register, handleSubmit, control, watch, reset, formState: { errors, isSubmitting } } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
@@ -74,10 +77,20 @@ export function EditEvent() {
         setLoading(true);
         const docSnap = await getDoc(doc(db, 'events', id));
         if (docSnap.exists()) {
-          const data = docSnap.data() as EventFormData;
-          setInitialData(data);
-          reset(data);
-          setShowRecurrence(data.isRecurring || false);
+          const eventData = docSnap.data();
+          const eventCreatorId = eventData.createdBy;
+          setCreatorId(eventCreatorId);
+          
+          // Verificar se o usuário pode editar este evento
+          const canUserEdit = await canUserEditEvent(user, eventCreatorId);
+          setCanEdit(canUserEdit);
+          
+          if (canUserEdit) {
+            const data = eventData as EventFormData;
+            setInitialData(data);
+            reset(data);
+            setShowRecurrence(data.isRecurring || false);
+          }
         } else {
           navigate('/dashboard');
         }
