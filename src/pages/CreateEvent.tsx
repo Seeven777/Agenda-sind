@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -7,8 +7,10 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Calendar, Clock, MapPin, Tag, FileText, Bell, Repeat, Palette, Timer, Scale, Lock, AlertTriangle, ArrowLeft, Check, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, MapPin, Tag, FileText, Bell, Repeat, Palette, Timer, Scale, Lock, AlertTriangle, ArrowLeft, Check, ChevronDown, Mic } from 'lucide-react';
 import { isBoss, isDiretoria, canCreateOnBlockedDays } from '../lib/permissions';
+import { useVoiceAssistant, parseVoiceCommand } from '../hooks/useVoiceAssistant';
+import { VoiceButton, VoiceResultDisplay } from '../components/VoiceButton';
 
 const processDetailsSchema = z.object({
   processoNumero: z.string().optional(),
@@ -112,6 +114,43 @@ export function CreateEvent() {
   const category = watch('category');
   const selectedDate = watch('date');
   const selectedEndDate = watch('endDate');
+
+  // Hook de reconhecimento de voz
+  const {
+    isListening,
+    transcript,
+    isSupported: isVoiceSupported,
+    error: voiceError,
+    startListening,
+    stopListening,
+    clearTranscript,
+  } = useVoiceAssistant();
+
+  // Estado para controlar quando aplicar o comando de voz
+  const [voiceApplied, setVoiceApplied] = useState(false);
+
+  // Aplicar dados do comando de voz ao formulário
+  const applyVoiceData = useCallback((text: string) => {
+    const parsed = parseVoiceCommand(text);
+    
+    if (parsed.title) setValue('title', parsed.title);
+    if (parsed.date) setValue('date', parsed.date);
+    if (parsed.time) setValue('time', parsed.time);
+    if (parsed.location) setValue('location', parsed.location);
+    if (parsed.category) setValue('category', parsed.category as any);
+    if (parsed.priority) setValue('priority', parsed.priority as any);
+    if (parsed.description) setValue('description', parsed.description);
+    
+    setVoiceApplied(true);
+    setTimeout(() => setVoiceApplied(false), 3000);
+  }, [setValue]);
+
+  // Effect para aplicar dados quando o reconhecimento finalizar
+  useEffect(() => {
+    if (transcript && !isListening && !voiceApplied) {
+      applyVoiceData(transcript);
+    }
+  }, [transcript, isListening, voiceApplied, applyVoiceData]);
 
   useEffect(() => {
     const checkBlockedDays = async () => {
@@ -283,7 +322,27 @@ export function CreateEvent() {
               <h1 className="text-lg sm:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Novo Evento</h1>
               <p className="text-xs sm:text-sm" style={{ color: 'var(--text-muted)' }}>Preencha os dados abaixo</p>
             </div>
+            {/* Botão do assistente de voz - sempre visível para feedback */}
+            <VoiceButton
+              isListening={isListening}
+              transcript={transcript}
+              onStartListening={isVoiceSupported ? startListening : () => alert('Reconhecimento de voz não suportado neste navegador. Use Chrome ou Edge.')}
+              onStopListening={stopListening}
+              isSupported={isVoiceSupported}
+              error={voiceError || (!isVoiceSupported ? 'Navegador não suporta API de voz' : null)}
+            />
           </div>
+
+          {/* Resultado do reconhecimento de voz */}
+          {(transcript || voiceApplied) && (
+            <div className="mb-4">
+              <VoiceResultDisplay
+                transcript={transcript}
+                isListening={isListening}
+                onClear={clearTranscript}
+              />
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {/* Título - Large touch target */}
