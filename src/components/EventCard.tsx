@@ -18,20 +18,13 @@ export function EventCard({ event, onEdit }: EventCardProps) {
   useEffect(() => {
     const checkPermissions = async () => {
       if (!user) {
-        console.log('[DEBUG] user é null');
         setCanEdit(false);
         return;
       }
       
-      console.log('[DEBUG] canEdit atual:', canEdit);
-      console.log('[DEBUG] user.uid:', user.uid, '| user.role:', user.role);
-      console.log('[DEBUG] event.createdBy:', event.createdBy);
-      
       try {
         const editPermission = await canUserEditEvent(user, event.createdBy);
-        console.log('[DEBUG] editPermission retornado:', editPermission);
         setCanEdit(editPermission);
-        console.log('[DEBUG] canEdit após setState:', editPermission);
       } catch (error) {
         console.error('Erro ao verificar permissões:', error);
         setCanEdit(false);
