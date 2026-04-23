@@ -10,7 +10,8 @@ import { ProfileModal } from './ProfileModal';
 import { NotificationSettings } from './NotificationSettings';
 import { isSuperAdmin, isBoss, isDiretoria } from '../lib/permissions';
 import { useReport } from '../contexts/ReportContext';
-import { getNotificationPermission } from '../lib/notifications';
+import { getNotificationPermission, saveFCMToken } from '../lib/notifications';
+import UpdatePopup from './UpdatePopup';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -23,7 +24,7 @@ export function Layout() {
   const [localUser, setLocalUser] = useState(user);
 
   useEffect(() => { setLocalUser(user); }, [user]);
-  
+
   // Listen for event to open notification settings
   useEffect(() => {
     const handleOpenNotifications = () => setShowNotifications(true);
@@ -34,14 +35,7 @@ export function Layout() {
   useEffect(() => {
     const setupNotifications = async () => {
       if (user) {
-        const token = await requestNotificationPermission();
-        if (token) {
-          try {
-            await updateDoc(doc(db, 'users', user.id), { fcmToken: token });
-          } catch (error) {
-            console.error('Error updating FCM token', error);
-          }
-        }
+        await saveFCMToken(user.id);
       }
     };
     setupNotifications();
@@ -144,25 +138,25 @@ export function Layout() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
+
               {/* Menu de navegação */}
               <nav className="flex-1 px-4 py-6 space-y-1">
                 {navigation.map(item => <NavLink key={item.name} item={item} onClick={() => setIsMobileMenuOpen(false)} />)}
               </nav>
-              
+
               {/* Seção do usuário */}
               <div className="p-4 space-y-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 {/* Card do usuário */}
-                <div 
-                  className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all hover:opacity-80 active:scale-[0.98]" 
-                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }} 
+                <div
+                  className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all hover:opacity-80 active:scale-[0.98]"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
                   onClick={() => { setIsMobileMenuOpen(false); setShowProfile(true); }}
                 >
                   <Avatar size="lg" />
                   <div className="flex-1 min-w-0">
                     <p className="text-base font-bold truncate" style={{ color: 'var(--text-primary)' }}>{localUser?.name}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span 
+                      <span
                         className="text-xs font-semibold px-2 py-0.5 rounded-lg"
                         style={{ background: roleBadge.bg, color: roleBadge.color }}
                       >
@@ -173,11 +167,11 @@ export function Layout() {
                   </div>
                   <ChevronRight className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
                 </div>
-                
+
                 {/* Botão de logout */}
-                <button 
-                  onClick={handleLogout} 
-                  className="flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10"
                   style={{ color: '#ef4444' }}
                 >
                   <LogOut className="mr-3 w-5 h-5" />
@@ -199,7 +193,7 @@ export function Layout() {
                 <span className="block text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>SindPetShop-SP</span>
               </div>
             </Link>
-            
+
             {/* Navigation */}
             <div className="flex-1 overflow-y-auto px-3 py-4">
               <div className="mb-2 px-3">
@@ -207,12 +201,12 @@ export function Layout() {
               </div>
               {navigation.map(item => <NavLink key={item.name} item={item} />)}
             </div>
-            
+
             {/* User Section */}
             <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
               {/* Botão Relatório - visível apenas para Admin/Diretoria */}
               {(isSuperAdmin(user?.email) || isBoss(user?.email) || isDiretoria(user)) && (
-                <button 
+                <button
                   onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
                   className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-80"
                   style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
@@ -221,16 +215,16 @@ export function Layout() {
                   Relatório
                 </button>
               )}
-              
-              <div 
-                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:opacity-80" 
-                style={{ background: 'var(--bg-card)' }} 
+
+              <div
+                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:opacity-80"
+                style={{ background: 'var(--bg-card)' }}
                 onClick={() => setShowProfile(true)}
               >
                 <Avatar size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{localUser?.name}</p>
-                  <span 
+                  <span
                     className="text-xs font-medium"
                     style={{ color: roleBadge.color }}
                   >
@@ -238,9 +232,9 @@ export function Layout() {
                   </span>
                 </div>
               </div>
-              <button 
-                onClick={handleLogout} 
-                className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10" 
+              <button
+                onClick={handleLogout}
+                className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-red-500/10"
                 style={{ color: '#ef4444' }}
               >
                 <LogOut className="mr-2 w-4 h-4" />
@@ -255,17 +249,17 @@ export function Layout() {
           {/* Mobile Header - Melhorado */}
           <header className="glass-nav sticky top-0 z-30 flex items-center h-16 px-2 gap-2 lg:hidden">
             {/* Logo */}
-            <Link 
-              to="/" 
+            <Link
+              to="/"
               className="flex items-center gap-2 flex-shrink-0"
             >
               <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
               <span className="text-base font-bold" style={{ color: 'var(--accent)' }}>Agenda</span>
             </Link>
-            
+
             {/* Spacer */}
             <div className="flex-1" />
-            
+
             {/* Report Button - Mobile */}
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
@@ -275,7 +269,7 @@ export function Layout() {
             >
               <BarChart3 className="w-4 h-4" />
             </button>
-            
+
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
@@ -290,7 +284,7 @@ export function Layout() {
           {/* Desktop Header */}
           <header className="hidden lg:flex items-center h-14 px-6 gap-3" style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
             <div className="flex-1" />
-            
+
             {/* Notification Settings Button */}
             <button
               onClick={() => setShowNotifications(true)}
@@ -300,7 +294,7 @@ export function Layout() {
             >
               <Bell className="w-4 h-4" />
             </button>
-            
+
             <button
               onClick={toggleTheme}
               className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105"
@@ -332,7 +326,7 @@ export function Layout() {
                 <Home className="w-6 h-6" />
                 <span className="text-[10px] font-medium">Início</span>
               </Link>
-              
+
               {/* Calendário */}
               <Link
                 to="/calendar"
@@ -344,7 +338,7 @@ export function Layout() {
                 <Calendar className="w-6 h-6" />
                 <span className="text-[10px] font-medium">Calendário</span>
               </Link>
-              
+
               {/* Botão Central de Criar Evento - Maior e mais visível */}
               <Link
                 to="/events/create"
@@ -353,7 +347,7 @@ export function Layout() {
               >
                 <Plus className="w-8 h-8 text-white" strokeWidth={2.5} />
               </Link>
-              
+
               {/* Agenda Particular ou Próximos */}
               {bossNavigation.length > 0 ? (
                 <Link
@@ -375,7 +369,7 @@ export function Layout() {
                   <span className="text-[10px] font-medium">Hoje</span>
                 </Link>
               )}
-              
+
               {/* Perfil */}
               <button
                 onClick={() => setShowProfile(true)}
@@ -400,12 +394,15 @@ export function Layout() {
           onUpdate={handleProfileUpdate}
         />
       )}
-      
+
       {/* Notification Settings Modal */}
-      <NotificationSettings 
-        isOpen={showNotifications} 
-        onClose={() => setShowNotifications(false)} 
+      <NotificationSettings
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
       />
+
+      {/* Pop-up de Novas Atualizações */}
+      <UpdatePopup />
     </>
   );
 }

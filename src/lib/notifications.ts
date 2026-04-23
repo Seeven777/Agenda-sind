@@ -1,24 +1,41 @@
-import { messaging, requestNotificationPermission } from './firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { messaging, requestNotificationPermission, db } from './firebase';
+import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { onMessage } from 'firebase/messaging';
 
 // Request and save FCM token for a user
 export async function saveFCMToken(userId: string): Promise<string | null> {
   try {
     const token = await requestNotificationPermission();
-    
+
     if (token) {
-      // Save token to user document
+      // Para economizar quota de escrita (Firestore Free Tier),
+      // verificamos se o token já é o mesmo que está no banco de dados.
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        fcmToken: token,
-        fcmTokenUpdatedAt: new Date().toISOString()
-      });
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (userData.fcmToken === token) {
+          return token; // Token já atualizado, evita gravação desnecessária
+        }
+
+        await updateDoc(userRef, {
+          fcmToken: token,
+          fcmTokenUpdatedAt: new Date().toISOString()
+        });
+      } else {
+        // Criar perfil se não existir (raro)
+        await setDoc(userRef, {
+          uid: userId,
+          fcmToken: token,
+          fcmTokenUpdatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
       console.log('FCM Token saved successfully');
       return token;
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error saving FCM token:', error);
@@ -31,11 +48,11 @@ export async function getUserFCMToken(userId: string): Promise<string | null> {
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    
+
     if (userSnap.exists()) {
       return userSnap.data().fcmToken || null;
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error getting user FCM token:', error);
@@ -88,16 +105,16 @@ export function getTimeUntilEvent(eventDate: string, eventTime: string): number 
 export function formatRelativeTime(milliseconds: number): string {
   const hours = Math.floor(milliseconds / (1000 * 60 * 60));
   const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (hours >= 24) {
     const days = Math.floor(hours / 24);
     return `${days} dia${days > 1 ? 's' : ''}`;
   }
-  
+
   if (hours >= 1) {
     return `${hours} hora${hours > 1 ? 's' : ''}`;
   }
-  
+
   return `${minutes} minuto${minutes > 1 ? 's' : ''}`;
 }
 
@@ -120,7 +137,7 @@ export function createEventNotificationPayload(
     day: 'numeric',
     month: 'long'
   });
-  
+
   return {
     title: `⏰ Lembrete: ${event.title}`,
     body: `Em ${timeLabel} - ${formattedDate} às ${formattedTime}\nLocal: ${event.location}\nCriado por: ${event.creatorName}`,

@@ -18,7 +18,8 @@ try {
     initializeApp({
       credential: cert(serviceAccount)
     });
-    db = getFirestore(undefined, 'ai-studio-768ec2de-5c87-4a0d-92c5-95cd211c9c67');
+    // Removido o ID fixo para usar o banco de dados padrão do projeto
+    db = getFirestore();
     messaging = getMessaging();
     console.log('Firebase Admin initialized successfully');
   } else {
@@ -37,7 +38,7 @@ async function startServer() {
 
   // API routes
   app.get('/api/health', (req, res) => {
-    res.json({ 
+    res.json({
       status: 'ok',
       firebaseAdmin: !!messaging,
       timestamp: new Date().toISOString()
@@ -47,32 +48,28 @@ async function startServer() {
   // Get upcoming events that need notification
   async function getEventsNeedingNotification(hoursBefore: number) {
     if (!db) return [];
-    
+
     const now = new Date();
-    const targetTime = new Date(now.getTime() + hoursBefore * 60 * 60 * 1000);
-    
-    // Calculate time window (±5 minutes to catch events)
-    const startWindow = new Date(targetTime.getTime() - 5 * 60 * 1000);
-    const endWindow = new Date(targetTime.getTime() + 5 * 60 * 1000);
-    
-    const startStr = startWindow.toISOString().slice(0, 16);
-    const endStr = endWindow.toISOString().slice(0, 16);
+    // Define uma janela de 10 minutos para garantir que o cron pegue o evento
+    const startWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000) - 5 * 60 * 1000);
+    const endWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000) + 5 * 60 * 1000);
+
     const notifyField = hoursBefore === 24 ? 'notify24h' : 'notify1h';
-    
+
     try {
       const eventsRef = db.collection('events');
       const snapshot = await eventsRef
         .where('status', '==', 'agendado')
         .where(notifyField, '==', true)
         .get();
-      
+
       const events: any[] = [];
-      
+
       snapshot.docs.forEach(doc => {
         const eventData = doc.data();
         const [year, month, day] = (eventData.date || '').split('-').map(Number);
         const [hour, minute] = (eventData.time || '').split(':').map(Number);
-        
+
         if (!year || !month || !day || typeof hour !== 'number' || typeof minute !== 'number') {
           return;
         }
@@ -85,7 +82,7 @@ async function startServer() {
           events.push({ id: doc.id, ...eventData });
         }
       });
-      
+
       return events;
     } catch (error) {
       console.error('Error fetching events:', error);
@@ -95,7 +92,7 @@ async function startServer() {
 
   async function getUserFCMToken(userId: string): Promise<string | null> {
     if (!db) return null;
-    
+
     try {
       const userRef = db.collection('users').doc(userId);
       const userSnap = await userRef.get();
@@ -119,7 +116,7 @@ async function startServer() {
       console.warn('No FCM token available for user:', userId);
       return false;
     }
-    
+
     try {
       const message = {
         token,
@@ -152,7 +149,7 @@ async function startServer() {
           }
         }
       };
-      
+
       const response = await messaging.send(message);
       console.log('Push notification sent:', response);
       return true;
@@ -163,47 +160,46 @@ async function startServer() {
   }
 
   // Save notification log to Firestore
-  async function logNotification(eventId: string, userId: string, type: '24h' | '1h', success: boolean) {
-    if (!db) return;
-    
-    try {
-      await db.collection('notification_logs').add({
-        eventId,
-        userId,
-        type,
-        success,
-        timestamp: FieldValue.serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error logging notification:', error);
+  async function logNotification(eventId: string, userId: string, type: '24h' | '1h' | '5min', success: boolean) {
+    // Removido o registro no Firestore para economizar cota (Quota Limit Exceeded).
+    // Usamos logs de console para monitoramento sem custos de escrita.
+    if (success) {
+      console.log(`[Notification SUCCESS] Event: ${eventId}, User: ${userId}, Type: ${type}`);
+    } else {
+      console.error(`[Notification FAILED] Event: ${eventId}, User: ${userId}, Type: ${type}`);
     }
   }
 
   // Scheduler for 24-hour notifications
   cron.schedule('*/5 * * * *', async () => {
     console.log('[Scheduler] Checking for 24h notifications...');
-    
+
     try {
       const events = await getEventsNeedingNotification(24);
-      
+
       for (const event of events) {
-        const success = await sendPushNotification(
-          event.fcmToken || null,
-          event.createdBy,
-          {
-            title: `⏰ Lembrete: ${event.title}`,
-            body: `O evento acontece em 24 horas!\nData: ${event.date} às ${event.time}\nLocal: ${event.location}`
-          },
-          {
-            eventId: event.id,
-            type: 'event_reminder_24h',
-            url: `/events/${event.id}`
-          }
-        );
-        
-        await logNotification(event.id, event.createdBy, '24h', success);
+        try {
+          const success = await sendPushNotification(
+            event.fcmToken || null,
+            event.createdBy,
+            {
+              title: `⏰ Lembrete: ${event.title}`,
+              body: `O evento acontece em 24 horas!\nData: ${event.date} às ${event.time}\nLocal: ${event.location}`
+            },
+            {
+              eventId: event.id,
+              type: 'event_reminder_24h',
+              url: `/events/${event.id}`
+            }
+          );
+
+          await logNotification(event.id, event.createdBy, '24h', success);
+        } catch (error) {
+          console.error(`[Scheduler] Error sending 24h notification for event ${event.id}:`, error);
+          await logNotification(event.id, event.createdBy, '24h', false);
+        }
       }
-      
+
       if (events.length > 0) {
         console.log(`[Scheduler] Processed ${events.length} events for 24h notifications`);
       }
@@ -221,14 +217,19 @@ async function startServer() {
       const startWindow = new Date(now.getTime() + 4 * 60 * 1000); // 4 minutes from now
       const endWindow = new Date(now.getTime() + 6 * 60 * 1000);   // 6 minutes from now
 
-      // Get events happening in the next 5 minutes (excluding personal events)
+      // Adicionado filtro de status para reduzir leituras desnecessárias
       const eventsSnapshot = await db.collection('events')
-        .where('isPersonal', '!=', true) // Exclude personal events
+        .where('status', '==', 'agendado')
         .get();
 
       const events = [];
       eventsSnapshot.docs.forEach(doc => {
         const eventData = doc.data();
+
+        if (eventData.isPersonal === true) {
+          return; // Skip private events
+        }
+
         const [year, month, day] = (eventData.date || '').split('-').map(Number);
         const [hour, minute] = (eventData.time || '').split(':').map(Number);
 
@@ -258,7 +259,7 @@ async function startServer() {
 
       const usersWithTokens = usersSnapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...(doc.data() as any)
       }));
 
       console.log(`[Scheduler] Notifying ${usersWithTokens.length} users about ${events.length} events`);
@@ -313,7 +314,7 @@ async function startServer() {
     try {
       const events24h = await getEventsNeedingNotification(24);
       const events1h = await getEventsNeedingNotification(1);
-      
+
       res.json({
         success: true,
         eventsNeedingNotification: {
@@ -330,14 +331,13 @@ async function startServer() {
   app.post('/api/notifications/test', async (req, res) => {
     console.log('Request body:', req.body);
     console.log('Request headers:', req.headers);
-    console.log('Raw body:', req.rawBody);
 
     const { fcmToken } = req.body;
-    
+
     if (!fcmToken) {
       return res.status(400).json({ success: false, error: 'FCM token required' });
     }
-    
+
     try {
       const success = await sendPushNotification(
         fcmToken,
@@ -351,7 +351,7 @@ async function startServer() {
           url: '/'
         }
       );
-      
+
       res.json({ success });
     } catch (error) {
       res.status(500).json({ success: false, error: 'Failed to send test notification' });
@@ -361,7 +361,7 @@ async function startServer() {
   // Temporary GET endpoint for testing
   app.get('/api/notifications/test/:token', async (req, res) => {
     const { token } = req.params;
-    
+
     try {
       const success = await sendPushNotification(
         token,
@@ -375,7 +375,7 @@ async function startServer() {
           url: '/'
         }
       );
-      
+
       res.json({ success });
     } catch (error) {
       console.error('Test notification error:', error);

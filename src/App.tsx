@@ -50,14 +50,14 @@ function AppRoutes() {
         <Route path="events/create" element={<CreateEvent />} />
         <Route path="events/:id" element={<EventDetails />} />
         <Route path="events/:id/edit" element={<EditEvent />} />
-        
+
         {/* Rotas de Admin - apenas super admins */}
         <Route path="admin" element={
           <AdminRoute>
             <AdminPanel />
           </AdminRoute>
         } />
-        
+
         {/* Dashboard Privado - apenas o patrão */}
         <Route path="private-dashboard" element={
           <BossRoute>

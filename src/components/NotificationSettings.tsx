@@ -10,15 +10,15 @@ interface NotificationSettingsProps {
 
 export function NotificationSettings({ isOpen, onClose }: NotificationSettingsProps) {
   const { user } = useAuth();
-  const { 
-    permission, 
-    token, 
-    isSupported, 
-    isLoading, 
-    error, 
-    requestPermission 
+  const {
+    permission,
+    token,
+    isSupported,
+    isLoading,
+    error,
+    requestPermission
   } = useNotifications();
-  
+
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
@@ -46,14 +46,14 @@ export function NotificationSettings({ isOpen, onClose }: NotificationSettingsPr
         color: 'gray'
       };
     }
-    
+
     switch (permission) {
       case 'granted':
         return {
           icon: <Bell className="w-8 h-8 text-green-500" />,
-          title: 'Notificações ativadas',
-          description: token 
-            ? 'Você receberá lembretes 24h e 1h antes dos eventos.' 
+          title: 'Notificações Prontas',
+          description: token
+            ? 'Você receberá lembretes 24h e 1h antes dos eventos.'
             : 'Token não disponível. Tente novamente.',
           color: 'green'
         };
@@ -93,11 +93,11 @@ export function NotificationSettings({ isOpen, onClose }: NotificationSettingsPr
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
       <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden animate-scale-in">
         {/* Header */}
@@ -216,16 +216,16 @@ export function NotificationSettings({ isOpen, onClose }: NotificationSettingsPr
 // Component to show notification status in the app
 export function NotificationStatusBadge() {
   const { permission, isSupported } = useNotifications();
-  
+
   if (!isSupported || permission === 'denied' || permission === 'granted') {
     return null;
   }
 
   if (permission === 'default' || permission === 'loading') {
     return (
-      <div 
+      <div
         className="fixed bottom-20 right-4 z-40 p-4 rounded-xl shadow-lg cursor-pointer animate-pulse"
-        style={{ 
+        style={{
           background: 'var(--accent)',
           color: 'white',
           maxWidth: '300px'
