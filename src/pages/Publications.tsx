@@ -58,10 +58,10 @@ const emptyForm: PublicationFormData = {
   notes: '',
 };
 
-const maxMediaItems = 10;
-const maxMediaSize = 60 * 1024 * 1024;
-const maxInlineMediaBytes = 720 * 1024;
-const maxInlineDocumentBytes = 930 * 1024;
+const maxMediaItems = 100;
+const maxMediaSize = 100 * 1024 * 1024;
+const maxInlineMediaBytes = 10 * 1024 * 1024;
+const maxInlineDocumentBytes = 10 * 1024 * 1024;
 
 const statusConfig: Record<PublicationStatus, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   rascunho: { label: 'Rascunho', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: FileText },
@@ -287,9 +287,6 @@ export function Publications() {
 
       const dataUrl = await compressImageFile(media.file);
       const dataUrlBytes = getTextBytes(dataUrl);
-      if (inlineBytes + dataUrlBytes > maxInlineDocumentBytes) {
-        throw new Error('As imagens ultrapassam o limite gratuito do Firestore. Use menos slides, imagens menores ou links externos.');
-      }
       inlineBytes += dataUrlBytes;
       uploadedMedia.push({ type: media.type, name: sanitizeFileName(media.name), url: dataUrl, note: media.note || '' });
     }
@@ -436,7 +433,7 @@ export function Publications() {
 
   const isOwner = (publication: PublicationApproval) => publication.createdBy === user?.uid;
   const canRemove = (publication: PublicationApproval) => {
-    return (isOwner(publication) || canApprove) && ['rascunho', 'reprovado'].includes(publication.status);
+    return isOwner(publication) || canApprove;
   };
 
   if (loading) {
