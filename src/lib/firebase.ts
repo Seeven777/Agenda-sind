@@ -13,14 +13,15 @@ let hasWarnedMissingVapidKey = false;
 export const loginWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: string }).code) : '';
+    if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
       await signInWithRedirect(auth, provider);
       return null;
     }
 
-    const result = await signInWithPopup(auth, provider);
-    return result.user;
-  } catch (error) {
     console.error("Error signing in with Google", error);
     throw error;
   }

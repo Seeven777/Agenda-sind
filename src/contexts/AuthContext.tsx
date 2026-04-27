@@ -27,6 +27,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const buildFallbackUser = (fUser: FirebaseUser): User => ({
+    id: fUser.uid,
+    uid: fUser.uid,
+    name: fUser.displayName || 'Usuário',
+    email: fUser.email || '',
+    role: 'administrativo',
+    createdAt: new Date().toISOString(),
+  });
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fUser) => {
       setFirebaseUser(fUser);
@@ -45,20 +54,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (userSnap.exists()) {
           setUser({ id: userSnap.id, ...userSnap.data() } as User);
         } else {
-          const newUser: Omit<User, 'id'> = {
-            uid: fUser.uid,
-            name: fUser.displayName || 'Usuário',
-            email: fUser.email || '',
-            role: 'administrativo',
-            createdAt: new Date().toISOString(),
-          };
+          const fallbackUser = buildFallbackUser(fUser);
+          const { id: _id, ...newUser } = fallbackUser;
 
           await setDoc(userRef, newUser);
-          setUser({ id: fUser.uid, ...newUser } as User);
+          setUser(fallbackUser);
         }
       } catch (error) {
         console.error('Erro ao carregar perfil do usuário:', error);
-        setUser(null);
+        setUser(buildFallbackUser(fUser));
       } finally {
         setLoading(false);
       }
