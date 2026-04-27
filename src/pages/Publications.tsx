@@ -982,17 +982,6 @@ function PublicationCard({
           )}
 
           <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
-            {publication.driveUrl && (
-              <a
-                href={publication.driveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 hover:bg-[#22c55e]/20 active:scale-95"
-              >
-                <Images className="w-4 h-4" />
-                Acessar Slides no Drive
-              </a>
-            )}
             {publication.publicationUrl && (
               <a
                 href={publication.publicationUrl}
@@ -1009,25 +998,27 @@ function PublicationCard({
 
         {/* Ações Compactas */}
         <div className="flex lg:flex-col justify-end gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-4 lg:pt-0 lg:pl-5 shrink-0 w-full lg:w-48">
+          {publication.driveUrl && (
+            <a
+              href={publication.driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 mb-1"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Ver Slides
+            </a>
+          )}
+
+          {(isOwner || canApprove) && publication.status !== 'enviado' && (
+            <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
+          )}
+
           {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
-            <>
-              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
-              <ActionButton icon={Edit} label="Editar Post" loading={loading} onClick={onEdit} tone="muted" />
-            </>
+            <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
           )}
           {publication.status === 'em_revisao' && canApprove && (
             <>
-              {publication.driveUrl && (
-                <a
-                  href={publication.driveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-[#f59e0b] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 mb-1"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Ver Publicação
-                </a>
-              )}
               <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
               <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
             </>
