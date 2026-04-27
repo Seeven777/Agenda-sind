@@ -2,6 +2,9 @@ export type Role = 'admin' | 'diretoria' | 'juridico' | 'comunicacao' | 'fiscali
 export type Priority = 'alta' | 'media' | 'baixa';
 export type Status = 'agendado' | 'concluido' | 'cancelado';
 export type EventCategory = 'reuniao' | 'visita' | 'processo' | 'evento' | 'outro';
+export type PublicationStatus = 'rascunho' | 'em_revisao' | 'aprovado' | 'reprovado' | 'enviado';
+export type PublicationChannel = 'instagram' | 'facebook' | 'site' | 'whatsapp' | 'email' | 'imprensa' | 'outro';
+export type PublicationMediaType = 'image' | 'video';
 
 // Permissões de usuário
 export interface UserPermissions {
@@ -10,6 +13,7 @@ export interface UserPermissions {
   canDeleteOthersEvents: boolean; // Pode excluir eventos de outros usuários
   canSeePersonalEvents: boolean;  // Pode ver eventos pessoais do patrão
   canCreateOnBlockedDays: boolean; // Pode criar eventos em dias bloqueados
+  canApprovePublications?: boolean; // Pode aprovar e enviar publicações
 }
 
 export interface User {
@@ -88,4 +92,39 @@ export interface ActivityLog {
   action: 'event_created' | 'event_updated' | 'event_deleted' | 'status_changed';
   timestamp: string;
   details?: string;
+}
+
+export interface PublicationApproval {
+  id: string;
+  title: string;
+  channel: PublicationChannel;
+  status: PublicationStatus;
+  content: string;
+  objective?: string;
+  targetAudience?: string;
+  requestedPublishDate?: string;
+  requestedPublishTime?: string;
+  priority: Priority;
+  notes?: string;
+  media?: PublicationMedia[];
+  rejectionReason?: string;
+  publicationUrl?: string;
+  createdBy: string;
+  creatorName: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt?: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  sentBy?: string;
+  sentByName?: string;
+  sentAt?: string;
+}
+
+export interface PublicationMedia {
+  type: PublicationMediaType;
+  url: string;
+  name: string;
+  note?: string;
 }

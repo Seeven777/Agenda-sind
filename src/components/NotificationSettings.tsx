@@ -89,6 +89,13 @@ export function NotificationSettings({ isOpen, onClose }: NotificationSettingsPr
   };
 
   const status = getStatusDisplay();
+  const statusColorStyles: Record<string, string> = {
+    gray: 'rgba(107,114,128,0.14)',
+    green: 'rgba(34,197,94,0.14)',
+    red: 'rgba(239,68,68,0.14)',
+    yellow: 'rgba(245,158,11,0.14)',
+    orange: 'rgba(249,115,22,0.14)',
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -120,7 +127,10 @@ export function NotificationSettings({ isOpen, onClose }: NotificationSettingsPr
         <div className="px-6 pb-6 space-y-6">
           {/* Status Icon */}
           <div className="flex justify-center">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center bg-${status.color}-100 dark:bg-${status.color}-900/20`}>
+            <div
+              className="w-20 h-20 rounded-full flex items-center justify-center"
+              style={{ background: statusColorStyles[status.color] || statusColorStyles.gray }}
+            >
               {status.icon}
             </div>
           </div>

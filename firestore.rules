@@ -15,7 +15,23 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "gustavo13470@gmail.com" && request.auth.token.email_verified == true));
+          ((request.auth.token.email == "gustavo13470@gmail.com" || request.auth.token.email == "jnyce6@hotmail.com") && request.auth.token.email_verified == true));
+    }
+
+    function canApprovePublications() {
+      return isAuthenticated() &&
+        (isAdmin() ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['diretoria', 'comunicacao'] ||
+          ('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.canApprovePublications == true));
+    }
+
+    function isPublicationOwnerUpdate() {
+      return resource.data.createdBy == request.auth.uid &&
+             request.resource.data.createdBy == resource.data.createdBy &&
+             request.resource.data.creatorName == resource.data.creatorName &&
+             resource.data.status in ['rascunho', 'reprovado'] &&
+             request.resource.data.status in ['rascunho', 'em_revisao'];
     }
 
     // Verifica se o usuário atual tem o mesmo cargo que o criador do evento
@@ -70,6 +86,55 @@ service cloud.firestore {
              (!('details' in data) || (data.details is string && data.details.size() <= 1000));
     }
 
+    function isValidPublicationMediaItem(mediaItem) {
+      return mediaItem is map &&
+             mediaItem.type in ['image', 'video'] &&
+             mediaItem.name is string && mediaItem.name.size() > 0 && mediaItem.name.size() <= 200 &&
+             mediaItem.url is string && mediaItem.url.size() > 0 && mediaItem.url.size() <= 900000 &&
+             (!('note' in mediaItem) || (mediaItem.note is string && mediaItem.note.size() <= 1000));
+    }
+
+    function isValidPublicationMediaList(media) {
+      return media is list && media.size() <= 10 &&
+             (media.size() < 1 || isValidPublicationMediaItem(media[0])) &&
+             (media.size() < 2 || isValidPublicationMediaItem(media[1])) &&
+             (media.size() < 3 || isValidPublicationMediaItem(media[2])) &&
+             (media.size() < 4 || isValidPublicationMediaItem(media[3])) &&
+             (media.size() < 5 || isValidPublicationMediaItem(media[4])) &&
+             (media.size() < 6 || isValidPublicationMediaItem(media[5])) &&
+             (media.size() < 7 || isValidPublicationMediaItem(media[6])) &&
+             (media.size() < 8 || isValidPublicationMediaItem(media[7])) &&
+             (media.size() < 9 || isValidPublicationMediaItem(media[8])) &&
+             (media.size() < 10 || isValidPublicationMediaItem(media[9]));
+    }
+
+    function isValidPublication(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.channel in ['instagram', 'facebook', 'site', 'whatsapp', 'email', 'imprensa', 'outro'] &&
+             data.status in ['rascunho', 'em_revisao', 'aprovado', 'reprovado', 'enviado'] &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 8000 &&
+             data.priority in ['alta', 'media', 'baixa'] &&
+             data.createdBy is string && data.createdBy.size() > 0 && data.createdBy.size() < 100 &&
+             data.creatorName is string && data.creatorName.size() > 0 && data.creatorName.size() < 100 &&
+             data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() < 50 &&
+             data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() < 50 &&
+             (!('objective' in data) || (data.objective is string && data.objective.size() <= 500)) &&
+             (!('targetAudience' in data) || (data.targetAudience is string && data.targetAudience.size() <= 250)) &&
+             (!('requestedPublishDate' in data) || (data.requestedPublishDate is string && data.requestedPublishDate.size() < 20)) &&
+             (!('requestedPublishTime' in data) || (data.requestedPublishTime is string && data.requestedPublishTime.size() < 10)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+             (!('media' in data) || isValidPublicationMediaList(data.media)) &&
+             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 1000)) &&
+             (!('publicationUrl' in data) || (data.publicationUrl is string && data.publicationUrl.size() <= 1000)) &&
+             (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() < 50)) &&
+             (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() < 100)) &&
+             (!('approvedByName' in data) || (data.approvedByName is string && data.approvedByName.size() < 100)) &&
+             (!('approvedAt' in data) || (data.approvedAt is string && data.approvedAt.size() < 50)) &&
+             (!('sentBy' in data) || (data.sentBy is string && data.sentBy.size() < 100)) &&
+             (!('sentByName' in data) || (data.sentByName is string && data.sentByName.size() < 100)) &&
+             (!('sentAt' in data) || (data.sentAt is string && data.sentAt.size() < 50));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -108,6 +173,18 @@ service cloud.firestore {
       allow create: if isAuthenticated() && hasRequiredFields(['eventId', 'userId', 'action', 'timestamp']) &&
                     isValidActivityLog(request.resource.data) && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false;
+    }
+
+    match /publications/{publicationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasRequiredFields(['title', 'channel', 'status', 'content', 'priority', 'createdBy', 'creatorName', 'createdAt', 'updatedAt']) &&
+                    isValidPublication(request.resource.data) &&
+                    request.resource.data.createdBy == request.auth.uid &&
+                    request.resource.data.status in ['rascunho', 'em_revisao'];
+      allow update: if isAuthenticated() && isValidPublication(request.resource.data) &&
+                    (isPublicationOwnerUpdate() || canApprovePublications());
+      allow delete: if isAuthenticated() &&
+                    ((resource.data.createdBy == request.auth.uid && resource.data.status in ['rascunho', 'reprovado']) || canApprovePublications());
     }
   }
 }

@@ -13,6 +13,7 @@ import { EditEvent } from './pages/EditEvent';
 import { EventDetails } from './pages/EventDetails';
 import { AdminPanel } from './pages/AdminPanel';
 import { PrivateDashboard } from './pages/PrivateDashboard';
+import { Publications } from './pages/Publications';
 import { isSuperAdmin, isBoss, isDiretoria } from './lib/permissions';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="events/create" element={<CreateEvent />} />
         <Route path="events/:id" element={<EventDetails />} />
         <Route path="events/:id/edit" element={<EditEvent />} />
+        <Route path="publications" element={<Publications />} />
 
         {/* Rotas de Admin - apenas super admins */}
         <Route path="admin" element={

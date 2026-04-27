@@ -8,6 +8,7 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const messaging = typeof window !== 'undefined' && 'serviceWorker' in navigator ? getMessaging(app) : null;
+let hasWarnedMissingVapidKey = false;
 
 export const loginWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
@@ -34,7 +35,10 @@ export const requestNotificationPermission = async () => {
   
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) {
-    console.warn('VITE_FIREBASE_VAPID_KEY is not set. Push notifications will not work.');
+    if (!hasWarnedMissingVapidKey) {
+      console.info('VITE_FIREBASE_VAPID_KEY is not set. Push notifications are disabled in this environment.');
+      hasWarnedMissingVapidKey = true;
+    }
     return null;
   }
 

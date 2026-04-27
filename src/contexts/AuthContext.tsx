@@ -2,8 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, loginWithGoogle, logout } from '../lib/firebase';
-import { User, Role } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { User } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -31,37 +30,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fUser) => {
       setFirebaseUser(fUser);
-      if (fUser) {
-        try {
-          const userRef = doc(db, 'users', fUser.uid);
-          const userSnap = await getDoc(userRef);
-          
-          if (userSnap.exists()) {
-            setUser({ id: userSnap.id, ...userSnap.data() } as User);
-          } else {
-            // Create new user profile
-            const newUser: Omit<User, 'id'> = {
-              uid: fUser.uid,
-              name: fUser.displayName || 'Usuário',
-              email: fUser.email || '',
-              role: 'administrativo', // Default role
-              createdAt: new Date().toISOString(),
-            };
-            
-            try {
-              await setDoc(userRef, newUser);
-              setUser({ id: fUser.uid, ...newUser } as User);
-            } catch (error) {
-              handleFirestoreError(error, OperationType.CREATE, `users/${fUser.uid}`);
-            }
-          }
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `users/${fUser.uid}`);
-        }
-      } else {
+      setLoading(true);
+
+      if (!fUser) {
         setUser(null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      try {
+        const userRef = doc(db, 'users', fUser.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          setUser({ id: userSnap.id, ...userSnap.data() } as User);
+        } else {
+          const newUser: Omit<User, 'id'> = {
+            uid: fUser.uid,
+            name: fUser.displayName || 'Usuário',
+            email: fUser.email || '',
+            role: 'administrativo',
+            createdAt: new Date().toISOString(),
+          };
+
+          await setDoc(userRef, newUser);
+          setUser({ id: fUser.uid, ...newUser } as User);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar perfil do usuário:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();

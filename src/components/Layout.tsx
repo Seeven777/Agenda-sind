@@ -1,16 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, LogOut, Menu, Plus, X, Bell, BellOff, Search, Sun, Moon, Settings, Crown, Home, ChevronRight, Shield, User, BarChart3 } from 'lucide-react';
+import { Calendar, LogOut, Plus, X, Bell, Sun, Moon, Settings, Crown, Home, ChevronRight, User, BarChart3, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
-import { requestNotificationPermission, db } from '../lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
 import { ProfileModal } from './ProfileModal';
 import { NotificationSettings } from './NotificationSettings';
 import { isSuperAdmin, isBoss, isDiretoria } from '../lib/permissions';
-import { useReport } from '../contexts/ReportContext';
-import { getNotificationPermission, saveFCMToken } from '../lib/notifications';
+import { saveFCMToken } from '../lib/notifications';
 import UpdatePopup from './UpdatePopup';
 
 export function Layout() {
@@ -22,6 +19,7 @@ export function Layout() {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [localUser, setLocalUser] = useState(user);
+  const [firestoreNotice, setFirestoreNotice] = useState<string | null>(null);
 
   useEffect(() => { setLocalUser(user); }, [user]);
 
@@ -30,6 +28,20 @@ export function Layout() {
     const handleOpenNotifications = () => setShowNotifications(true);
     window.addEventListener('openNotificationSettings', handleOpenNotifications);
     return () => window.removeEventListener('openNotificationSettings', handleOpenNotifications);
+  }, []);
+
+  useEffect(() => {
+    let noticeTimeout: number | undefined;
+    const handleFirestoreNotice = () => {
+      if (noticeTimeout) window.clearTimeout(noticeTimeout);
+      setFirestoreNotice('Alguns dados não puderam ser carregados. Verifique as regras do Firebase e tente novamente.');
+      noticeTimeout = window.setTimeout(() => setFirestoreNotice(null), 7000);
+    };
+    window.addEventListener('firestore-error', handleFirestoreNotice);
+    return () => {
+      if (noticeTimeout) window.clearTimeout(noticeTimeout);
+      window.removeEventListener('firestore-error', handleFirestoreNotice);
+    };
   }, []);
 
   useEffect(() => {
@@ -45,6 +57,7 @@ export function Layout() {
   const baseNavigation = [
     { name: 'Início', href: '/', icon: Home },
     { name: 'Calendário', href: '/calendar', icon: Calendar },
+    { name: 'Publicações', href: '/publications', icon: ClipboardCheck },
   ];
 
   // Menu Admin (para super admins)
@@ -119,10 +132,21 @@ export function Layout() {
   };
 
   const roleBadge = getRoleBadge();
+  const canViewReports = isSuperAdmin(user?.email) || isBoss(user?.email) || isDiretoria(user);
 
   return (
     <>
       <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+        {firestoreNotice && (
+          <div
+            className="fixed top-4 left-4 right-4 lg:left-auto lg:right-6 lg:max-w-md z-[70] p-4 rounded-xl shadow-2xl flex items-start gap-3"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid rgba(239,68,68,0.28)', color: 'var(--text-secondary)' }}
+          >
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
+            <p className="text-sm font-medium">{firestoreNotice}</p>
+          </div>
+        )}
+
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
           <div className="fixed inset-0 z-50 lg:hidden">
@@ -205,7 +229,7 @@ export function Layout() {
             {/* User Section */}
             <div className="p-3 space-y-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
               {/* Botão Relatório - visível apenas para Admin/Diretoria */}
-              {(isSuperAdmin(user?.email) || isBoss(user?.email) || isDiretoria(user)) && (
+              {canViewReports && (
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
                   className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-80"
@@ -260,15 +284,16 @@ export function Layout() {
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Report Button - Mobile */}
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent)' }}
-              title="Relatório"
-            >
-              <BarChart3 className="w-4 h-4" />
-            </button>
+            {canViewReports && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent)' }}
+                title="Relatório"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Theme Toggle */}
             <button
@@ -348,27 +373,17 @@ export function Layout() {
                 <Plus className="w-8 h-8 text-white" strokeWidth={2.5} />
               </Link>
 
-              {/* Agenda Particular ou Próximos */}
-              {bossNavigation.length > 0 ? (
-                <Link
-                  to="/private-dashboard"
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
-                    location.pathname === '/private-dashboard' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
-                  )}
-                >
-                  <Crown className="w-6 h-6" />
-                  <span className="text-[10px] font-medium">Particular</span>
-                </Link>
-              ) : (
-                <Link
-                  to="/"
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] text-[var(--text-muted)]"
-                >
-                  <Calendar className="w-6 h-6" />
-                  <span className="text-[10px] font-medium">Hoje</span>
-                </Link>
-              )}
+              {/* Publicações */}
+              <Link
+                to="/publications"
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/publications' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                )}
+              >
+                <ClipboardCheck className="w-6 h-6" />
+                <span className="text-[10px] font-medium">Public.</span>
+              </Link>
 
               {/* Perfil */}
               <button

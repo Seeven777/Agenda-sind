@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, addDoc, query, where, getDocs, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Repeat, Palette, ArrowLeft, Scale, User, Phone, MapPinIcon } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Palette, ArrowLeft, Scale, User, Phone, MapPinIcon } from 'lucide-react';
 import { canUserEditEvent } from '../lib/permissions';
 
 // Schema para detalhes do processo
@@ -54,19 +53,14 @@ export function EditEvent() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState<EventFormData | null>(null);
-  const [showRecurrence, setShowRecurrence] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
-  const [creatorId, setCreatorId] = useState<string>('');
+  const [accessDenied, setAccessDenied] = useState(false);
 
-  const { register, handleSubmit, control, watch, reset, formState: { errors, isSubmitting } } = useForm<EventFormData>({
+  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
   });
 
-  const isRecurring = watch('isRecurring');
-  const recurrenceType = watch('recurrenceType');
   const category = watch('category');
 
   useEffect(() => {
@@ -79,20 +73,19 @@ export function EditEvent() {
         if (docSnap.exists()) {
           const eventData = docSnap.data();
           const eventCreatorId = eventData.createdBy;
-          setCreatorId(eventCreatorId);
           
           // Verificar se o usuário pode editar este evento
           const canUserEdit = await canUserEditEvent(user, eventCreatorId);
-          setCanEdit(canUserEdit);
-          
           if (canUserEdit) {
             const data = eventData as EventFormData;
             setInitialData(data);
             reset(data);
-            setShowRecurrence(data.isRecurring || false);
+            setAccessDenied(false);
+          } else {
+            setAccessDenied(true);
           }
         } else {
-          navigate('/dashboard');
+          navigate('/');
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, 'events');
@@ -112,7 +105,9 @@ export function EditEvent() {
 
       const updateData: Record<string, any> = {
         title: data.title,
+        date: data.date,
         time: data.time,
+        endDate: data.endDate || '',
         endTime: data.endTime || '',
         location: data.location,
         category: data.category,
@@ -130,8 +125,6 @@ export function EditEvent() {
       };
 
       // Campos que NÃO devem ser propagados para toda a série (cada evento tem seu próprio date)
-      const nonPropagatableFields = ['date', 'endDate'];
-
       // Apenas adicionar processDetails se for categoria 'processo'
       if (data.category === 'processo' && data.processDetails) {
         updateData.processDetails = {
@@ -147,6 +140,8 @@ export function EditEvent() {
           advogadoFone: data.processDetails.advogadoFone || '',
           acompanhamento: data.processDetails.acompanhamento || '',
         };
+      } else {
+        updateData.processDetails = deleteField();
       }
 
       // Buscar o evento original para verificar se tem seriesId
@@ -213,7 +208,23 @@ export function EditEvent() {
   }
 
   if (!initialData) {
-    return <div>Evento não encontrado</div>;
+    return (
+      <div className="dark-card p-6 text-center">
+        <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+          {accessDenied ? 'Sem permissão para editar' : 'Evento não encontrado'}
+        </h1>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          {accessDenied ? 'Você não tem permissão para alterar este evento.' : 'Não foi possível carregar os dados deste evento.'}
+        </p>
+        <button
+          onClick={() => navigate(-1)}
+          className="px-4 py-2 rounded-xl text-sm font-bold"
+          style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+        >
+          Voltar
+        </button>
+      </div>
+    );
   }
 
   return (

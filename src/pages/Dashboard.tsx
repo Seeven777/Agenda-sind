@@ -59,9 +59,13 @@ export function Dashboard() {
     const todayQuery = query(collection(db, 'events'), where('date', '==', todayStr), orderBy('time', 'asc'));
     const upcomingQuery = query(collection(db, 'events'), where('date', '>', todayStr), orderBy('date', 'asc'), orderBy('time', 'asc'), limit(10));
     const activeQuery = query(collection(db, 'events'), where('status', '==', 'agendado'));
+    const onEventsError = (error: unknown) => {
+      handleFirestoreError(error, OperationType.LIST, 'events');
+      setLoading(false);
+    };
 
-    const u1 = onSnapshot(todayQuery, (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), (e) => handleFirestoreError(e, OperationType.LIST, 'events'));
-    const u2 = onSnapshot(upcomingQuery, (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), (e) => handleFirestoreError(e, OperationType.LIST, 'events'));
+    const u1 = onSnapshot(todayQuery, (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
+    const u2 = onSnapshot(upcomingQuery, (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
     const u3 = onSnapshot(activeQuery, (s) => { 
       const events = s.docs.map(d => ({ id: d.id, ...d.data() } as Event));
       setAllActiveEvents(events);
@@ -69,7 +73,7 @@ export function Dashboard() {
       const monthEvents = events.filter(e => isInCurrentMonth(e.date));
       setMonthlyEvents(monthEvents);
       setLoading(false);
-    }, (e) => handleFirestoreError(e, OperationType.LIST, 'events'));
+    }, onEventsError);
 
     return () => { u1(); u2(); u3(); };
   }, [user]);
@@ -107,7 +111,7 @@ export function Dashboard() {
 
   // Build Google Maps route URL from today's events
   const routeUrl = (() => {
-    const locations = todayEvents
+    const locations = todayFiltered
       .filter(e => e.location && e.location.trim() !== '')
       .sort((a, b) => a.time.localeCompare(b.time))
       .map(e => e.location.trim());

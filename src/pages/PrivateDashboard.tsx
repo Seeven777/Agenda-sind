@@ -16,11 +16,17 @@ export function PrivateDashboard() {
   const [allPersonalEvents, setAllPersonalEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const getDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   useEffect(() => {
     if (!user) return;
 
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getDateString(new Date());
 
     // Eventos pessoais do patrão
     const personalQuery = query(
@@ -47,20 +53,24 @@ export function PrivateDashboard() {
       orderBy('time', 'asc'),
       limit(10)
     );
+    const onEventsError = (error: unknown) => {
+      handleFirestoreError(error, OperationType.LIST, 'events');
+      setLoading(false);
+    };
 
     const u1 = onSnapshot(personalQuery, 
       (s) => { setAllPersonalEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))); setLoading(false); },
-      (e) => handleFirestoreError(e, OperationType.LIST, 'events')
+      onEventsError
     );
 
     const u2 = onSnapshot(todayPersonalQuery, 
       (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))),
-      (e) => handleFirestoreError(e, OperationType.LIST, 'events')
+      onEventsError
     );
 
     const u3 = onSnapshot(upcomingPersonalQuery, 
       (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))),
-      (e) => handleFirestoreError(e, OperationType.LIST, 'events')
+      onEventsError
     );
 
     return () => { u1(); u2(); u3(); };

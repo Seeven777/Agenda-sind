@@ -7,7 +7,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
-import { Calendar, Clock, MapPin, Tag, FileText, Bell, Repeat, Palette, Timer, Scale, Lock, AlertTriangle, ArrowLeft, Check, ChevronDown, Mic } from 'lucide-react';
+import { Calendar, Clock, MapPin, Tag, FileText, Bell, Repeat, Timer, Scale, Lock, AlertTriangle, ArrowLeft, Check, ChevronDown } from 'lucide-react';
 import { isBoss, isDiretoria, canCreateOnBlockedDays } from '../lib/permissions';
 import { useVoiceAssistant, parseVoiceCommand } from '../hooks/useVoiceAssistant';
 import { VoiceButton, VoiceResultDisplay } from '../components/VoiceButton';
@@ -25,8 +25,6 @@ const processDetailsSchema = z.object({
   advogadoFone: z.string().optional(),
   acompanhamento: z.string().optional(),
 });
-
-type ProcessDetailsFormData = z.infer<typeof processDetailsSchema>;
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').max(200),
@@ -110,7 +108,6 @@ export function CreateEvent() {
 
   const isRecurring = watch('isRecurring');
   const recurrenceType = watch('recurrenceType');
-  const hasEndDate = watch('hasEndDate');
   const category = watch('category');
   const selectedDate = watch('date');
   const selectedEndDate = watch('endDate');
@@ -157,7 +154,7 @@ export function CreateEvent() {
       if (!user) return;
       const datesToCheck: string[] = [selectedDate];
       
-      if (hasEndDate && selectedEndDate) {
+      if (selectedEndDate) {
         const dates = generateDatesUntilEndDate(selectedDate, selectedEndDate);
         datesToCheck.push(...dates);
       }
@@ -184,16 +181,7 @@ export function CreateEvent() {
     };
     
     if (selectedDate) checkBlockedDays();
-  }, [selectedDate, selectedEndDate, hasEndDate, isRecurring, recurrenceType, user]);
-
-  const handleHasEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setShowEndDate(e.target.checked);
-    setValue('hasEndDate', e.target.checked);
-    if (!e.target.checked) {
-      setValue('endDate', '');
-      setValue('endTime', '');
-    }
-  };
+  }, [selectedDate, selectedEndDate, isRecurring, recurrenceType, user]);
 
   const onSubmit = async (data: EventFormData) => {
     if (!user) return;
@@ -250,7 +238,7 @@ export function CreateEvent() {
       }
 
       const isReallyRecurring = data.isRecurring && data.recurrenceType && data.recurrenceType !== 'none';
-      const hasEnd = data.hasEndDate && data.endDate;
+      const hasEnd = Boolean(data.endDate && data.endDate !== data.date);
       const seriesId = `series_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       if (isReallyRecurring) {

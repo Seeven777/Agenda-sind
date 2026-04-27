@@ -4,7 +4,7 @@ import { doc, getDoc, deleteDoc, updateDoc, addDoc, collection, query, where, ge
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, Bookmark, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle, Printer, Scale, Phone, Lock } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle, Printer, Scale, Phone, Lock } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents, canUserEditEvent, canUserDeleteEvent } from '../lib/permissions';
 
@@ -109,12 +109,25 @@ export function EventDetails() {
   };
 
   const googleCalendarUrl = event ? (() => {
-    const start = event.date.replace(/-/g, '') + 'T' + event.time.replace(/:/g, '') + '00';
+    const toGoogleLocalDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hour = String(date.getHours()).padStart(2, '0');
+      const minute = String(date.getMinutes()).padStart(2, '0');
+      return `${year}${month}${day}T${hour}${minute}00`;
+    };
     const [year, month, day] = event.date.split('-').map(Number);
     const [hour, minute] = event.time.split(':').map(Number);
     const startDate = new Date(year, month - 1, day, hour, minute);
-    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-    const end = endDate.toISOString().replace(/-|:|\.\d\d\d/g, '').split('Z')[0];
+    const [endYear, endMonth, endDay] = (event.endDate || event.date).split('-').map(Number);
+    const [endHour, endMinute] = (event.endTime || '').split(':').map(Number);
+    const hasValidEndTime = event.endTime && Number.isFinite(endHour) && Number.isFinite(endMinute);
+    const endDate = hasValidEndTime && endYear && endMonth && endDay
+      ? new Date(endYear, endMonth - 1, endDay, endHour, endMinute)
+      : new Date(startDate.getTime() + 60 * 60 * 1000);
+    const start = toGoogleLocalDate(startDate);
+    const end = toGoogleLocalDate(endDate);
     const params = new URLSearchParams({ action: 'TEMPLATE', text: event.title, details: event.description || '', location: event.location, dates: `${start}/${end}` });
     return `https://www.google.com/calendar/render?${params.toString()}`;
   })() : '';
@@ -472,7 +485,7 @@ export function EventDetails() {
                   <CheckCircle className="w-4 h-4" />Concluir
                 </button>
               )}
-              {canEdit && (
+              {canDelete && (
                 <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all touch-target" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <Trash2 className="w-4 h-4" />Excluir
                 </button>

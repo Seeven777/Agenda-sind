@@ -35,6 +35,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   canDeleteOthersEvents: false,
   canSeePersonalEvents: false,
   canCreateOnBlockedDays: false,
+  canApprovePublications: false,
 };
 
 // Verificar se usuário pode criar eventos
@@ -70,6 +71,14 @@ export function canCreateOnBlockedDays(user: User | null): boolean {
   if (!user) return false;
   if (user.isAdmin || isSuperAdmin(user.email)) return true;
   return user.permissions?.canCreateOnBlockedDays ?? DEFAULT_PERMISSIONS.canCreateOnBlockedDays;
+}
+
+// Verificar se usuário pode aprovar e registrar envio de publicações
+export function canApprovePublications(user: User | null): boolean {
+  if (!user) return false;
+  if (user.isAdmin || isSuperAdmin(user.email) || isBoss(user.email)) return true;
+  if (user.role === 'diretoria' || user.role === 'comunicacao') return true;
+  return user.permissions?.canApprovePublications ?? DEFAULT_PERMISSIONS.canApprovePublications;
 }
 
 // Verificar se evento deve ser oculto para o usuário

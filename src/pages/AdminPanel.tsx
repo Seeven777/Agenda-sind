@@ -3,23 +3,32 @@ import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestor
 import { db } from '../lib/firebase';
 import { User, UserPermissions } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { isSuperAdmin, BOSS_EMAILS, shouldShowProfile, shouldShowName, shouldShowEmail, shouldShowDepartment } from '../lib/permissions';
-import { Users, Shield, Check, X, Edit2, Save, ChevronDown, ChevronUp, UserCheck, UserX, Crown, Eye, EyeOff } from 'lucide-react';
+import { isSuperAdmin, BOSS_EMAILS } from '../lib/permissions';
+import { Users, Shield, Check, X, ChevronDown, ChevronUp, UserCheck, UserX, Crown, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 export function AdminPanel() {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-      setUsers(usersList);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        setUsers(usersList);
+        setError(null);
+        setLoading(false);
+      },
+      (snapshotError) => {
+        console.error('Erro ao carregar usuários:', snapshotError);
+        setError('Não foi possível carregar os usuários. Verifique as regras do Firestore e tente novamente.');
+        setLoading(false);
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -82,7 +91,17 @@ export function AdminPanel() {
     );
   }
 
-  const isCurrentUserAdmin = user && isSuperAdmin(user.email);
+  if (error) {
+    return (
+      <div className="dark-card p-6 flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
+        <div>
+          <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Painel indisponível</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-24 lg:pb-6">
@@ -308,6 +327,12 @@ export function AdminPanel() {
                         description="Pode criar eventos em datas reservadas pelo patrão"
                         checked={userItem.permissions?.canCreateOnBlockedDays ?? false}
                         onChange={(v) => handlePermissionChange(userItem, 'canCreateOnBlockedDays', v)}
+                      />
+                      <PermissionToggle
+                        label="Aprovar Publicações"
+                        description="Pode aprovar, reprovar e registrar envio de publicações"
+                        checked={userItem.permissions?.canApprovePublications ?? false}
+                        onChange={(v) => handlePermissionChange(userItem, 'canApprovePublications', v)}
                       />
                     </div>
                   </div>

@@ -4,8 +4,9 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import cron from 'node-cron';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import firebaseConfig from './firebase-applet-config.json';
 
 // Initialize Firebase Admin
 let db: ReturnType<typeof getFirestore> | null = null;
@@ -18,10 +19,10 @@ try {
     initializeApp({
       credential: cert(serviceAccount)
     });
-    // Removido o ID fixo para usar o banco de dados padrão do projeto
-    db = getFirestore();
+    // Usa o mesmo banco nomeado configurado no app cliente.
+    db = getFirestore(firebaseConfig.firestoreDatabaseId);
     messaging = getMessaging();
-    console.log('Firebase Admin initialized successfully');
+    console.log(`Firebase Admin initialized successfully (${firebaseConfig.firestoreDatabaseId})`);
   } else {
     console.warn('FIREBASE_SERVICE_ACCOUNT not found. Server-side notifications will be simulated.');
   }
@@ -212,6 +213,11 @@ async function startServer() {
   cron.schedule('*/1 * * * *', async () => {
     console.log('[Scheduler] Checking for 5min notifications...');
 
+    if (!db) {
+      console.log('[Scheduler] Firebase Admin not available. Skipping 5min notifications.');
+      return;
+    }
+
     try {
       const now = new Date();
       const startWindow = new Date(now.getTime() + 4 * 60 * 1000); // 4 minutes from now
@@ -329,9 +335,6 @@ async function startServer() {
 
   // API endpoint to send a test notification
   app.post('/api/notifications/test', async (req, res) => {
-    console.log('Request body:', req.body);
-    console.log('Request headers:', req.headers);
-
     const { fcmToken } = req.body;
 
     if (!fcmToken) {
@@ -358,31 +361,6 @@ async function startServer() {
     }
   });
 
-  // Temporary GET endpoint for testing
-  app.get('/api/notifications/test/:token', async (req, res) => {
-    const { token } = req.params;
-
-    try {
-      const success = await sendPushNotification(
-        token,
-        'test-user',
-        {
-          title: 'Test Notification',
-          body: 'This is a test push notification from the server!'
-        },
-        {
-          type: 'test',
-          url: '/'
-        }
-      );
-
-      res.json({ success });
-    } catch (error) {
-      console.error('Test notification error:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -393,7 +371,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

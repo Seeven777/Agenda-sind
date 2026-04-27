@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -10,8 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Lock, Calendar, ChevronLeft, ChevronRight, Grid3X3, List, LayoutGrid } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Calendar, ChevronLeft, ChevronRight, Grid3X3, List, LayoutGrid } from 'lucide-react';
 
 const locales = { 'pt-BR': ptBR };
 
@@ -41,7 +40,6 @@ export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState<CalendarView>('month');
   const navigate = useNavigate();
-  const calendarRef = useRef<any>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
@@ -82,7 +80,12 @@ export function CalendarView() {
         const [year, month, day] = data.date.split('-').map(Number);
         const [hour, minute] = data.time.split(':').map(Number);
         const start = new Date(year, month - 1, day, hour, minute);
-        const end = new Date(start.getTime() + 60 * 60 * 1000);
+        const [endYear, endMonth, endDay] = (data.endDate || data.date).split('-').map(Number);
+        const [endHour, endMinute] = (data.endTime || '').split(':').map(Number);
+        const hasValidEndTime = data.endTime && Number.isFinite(endHour) && Number.isFinite(endMinute);
+        const end = hasValidEndTime && endYear && endMonth && endDay
+          ? new Date(endYear, endMonth - 1, endDay, endHour, endMinute)
+          : new Date(start.getTime() + 60 * 60 * 1000);
 
         return {
           id: doc.id,
@@ -148,26 +151,15 @@ export function CalendarView() {
   };
 
   const handlePreviousMonth = () => {
-    const newDate = subMonths(currentDate, 1);
-    setCurrentDate(newDate);
-    if (calendarRef.current) {
-      calendarRef.current.getApi().date(newDate);
-    }
+    setCurrentDate(prev => subMonths(prev, 1));
   };
 
   const handleNextMonth = () => {
-    const newDate = addMonths(currentDate, 1);
-    setCurrentDate(newDate);
-    if (calendarRef.current) {
-      calendarRef.current.getApi().date(newDate);
-    }
+    setCurrentDate(prev => addMonths(prev, 1));
   };
 
   const handleViewChange = (view: CalendarView) => {
     setCurrentView(view);
-    if (calendarRef.current) {
-      calendarRef.current.getApi().view(view);
-    }
   };
 
   const viewOptions = [
@@ -245,7 +237,6 @@ export function CalendarView() {
           
           <div style={{ height: isMobile ? 'calc(100vh - 320px)' : 'calc(100vh - 360px)', minHeight: '400px' }}>
             <BigCalendar
-              ref={calendarRef}
               localizer={localizer}
               events={events}
               startAccessor="start"
