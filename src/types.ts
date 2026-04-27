@@ -105,6 +105,7 @@ export interface PublicationApproval {
   requestedPublishDate?: string;
   requestedPublishTime?: string;
   priority: Priority;
+  driveUrl: string;
   notes?: string;
   media?: PublicationMedia[];
   rejectionReason?: string;

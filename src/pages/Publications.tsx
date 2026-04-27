@@ -5,12 +5,16 @@ import {
   Calendar,
   CheckCircle,
   Clock,
+  ChevronDown,
+  ChevronUp,
+  Edit,
   ExternalLink,
   Facebook,
   FileText,
   Globe2,
   Instagram,
   Image as ImageIcon,
+  Images,
   Mail,
   MessageCircle,
   Newspaper,
@@ -37,6 +41,7 @@ type PublicationFormData = {
   objective: string;
   targetAudience: string;
   content: string;
+  driveUrl: string;
   notes: string;
 };
 
@@ -44,6 +49,7 @@ type MediaDraft = PublicationMedia & {
   id: string;
   file?: File;
   isLocal?: boolean;
+  thumbnailUrl?: string;
 };
 
 const emptyForm: PublicationFormData = {
@@ -55,12 +61,13 @@ const emptyForm: PublicationFormData = {
   objective: '',
   targetAudience: '',
   content: '',
+  driveUrl: '',
   notes: '',
 };
 
 const maxMediaItems = 100;
 const maxMediaSize = 100 * 1024 * 1024;
-const maxInlineMediaBytes = 10 * 1024 * 1024;
+const maxInlineMediaBytes = 850 * 1024; // Firestore tem limite de 1MB por documento.
 const maxInlineDocumentBytes = 10 * 1024 * 1024;
 
 const statusConfig: Record<PublicationStatus, { label: string; color: string; bg: string; icon: React.ElementType }> = {
@@ -132,8 +139,8 @@ async function compressImageFile(file: File): Promise<string> {
   const image = await loadImage(source);
   const maxSide = 1400;
   const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
+  let width = Math.max(1, Math.round(image.width * scale));
+  let height = Math.max(1, Math.round(image.height * scale));
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -141,13 +148,13 @@ async function compressImageFile(file: File): Promise<string> {
   if (!ctx) return source;
 
   ctx.drawImage(image, 0, 0, width, height);
-  const qualities = [0.82, 0.72, 0.62, 0.52, 0.42];
+  const qualities = [0.7, 0.5, 0.3, 0.2]; // Qualidades progressivamente menores
   for (const quality of qualities) {
     const dataUrl = canvas.toDataURL('image/jpeg', quality);
-    if (dataUrl.length <= maxInlineMediaBytes) return dataUrl;
+    if (dataUrl.length <= 250 * 1024) return dataUrl; // Tenta manter cada imagem < 250KB
   }
 
-  return canvas.toDataURL('image/jpeg', 0.36);
+  return canvas.toDataURL('image/jpeg', 0.15);
 }
 
 function getTextBytes(value: string) {
@@ -162,10 +169,12 @@ export function Publications() {
   const [formData, setFormData] = useState<PublicationFormData>(emptyForm);
   const [mediaDrafts, setMediaDrafts] = useState<MediaDraft[]>([]);
   const [mediaUrl, setMediaUrl] = useState('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [mediaUrlType, setMediaUrlType] = useState<PublicationMediaType>('image');
   const [submittingStatus, setSubmittingStatus] = useState<PublicationStatus | null>(null);
   const [activeStatus, setActiveStatus] = useState<PublicationStatus | 'todos'>('todos');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [actionDialog, setActionDialog] = useState<{ type: 'reject' | 'sent'; publication: PublicationApproval } | null>(null);
   const [actionDialogText, setActionDialogText] = useState('');
@@ -248,10 +257,11 @@ export function Publications() {
     setMediaDrafts((current) => [
       ...current,
       {
-        id: `${url}-${crypto.randomUUID()}`,
+        id: `${url}-${Date.now()}`,
         type: mediaUrlType || inferMediaType(url),
         name: url.split('/').pop()?.split('?')[0] || 'Link de mídia',
         url,
+        thumbnailUrl: thumbnailUrl.trim() || undefined,
         note: '',
       },
     ]);
@@ -277,7 +287,13 @@ export function Publications() {
     let inlineBytes = getTextBytes(formData.title + formData.content + formData.notes);
     for (const media of mediaDrafts) {
       if (!media.file) {
-        uploadedMedia.push({ type: media.type, name: media.name, url: media.url, note: media.note || '' });
+        uploadedMedia.push({
+          type: media.type,
+          name: media.name,
+          url: media.url,
+          thumbnailUrl: media.thumbnailUrl,
+          note: media.note || ''
+        } as any);
         continue;
       }
 
@@ -287,6 +303,11 @@ export function Publications() {
 
       const dataUrl = await compressImageFile(media.file);
       const dataUrlBytes = getTextBytes(dataUrl);
+
+      if (inlineBytes + dataUrlBytes > maxInlineMediaBytes) {
+        throw new Error('As imagens ultrapassam o limite do Firestore. Use menos fotos ou imagens menores.');
+      }
+
       inlineBytes += dataUrlBytes;
       uploadedMedia.push({ type: media.type, name: sanitizeFileName(media.name), url: dataUrl, note: media.note || '' });
     }
@@ -301,9 +322,30 @@ export function Publications() {
     setFormData(emptyForm);
     setMediaDrafts([]);
     setMediaUrl('');
+    setThumbnailUrl('');
     setMediaUrlType('image');
+    setEditingId(null);
     setShowForm(false);
     setSubmittingStatus(null);
+  };
+
+  const handleEdit = (publication: PublicationApproval) => {
+    setFormData({
+      title: publication.title,
+      channel: publication.channel,
+      priority: publication.priority,
+      requestedPublishDate: publication.requestedPublishDate || '',
+      requestedPublishTime: publication.requestedPublishTime || '',
+      objective: publication.objective || '',
+      targetAudience: publication.targetAudience || '',
+      content: publication.content,
+      driveUrl: publication.driveUrl || '',
+      notes: publication.notes || '',
+    });
+    setMediaDrafts(publication.media?.map(m => ({ ...m, id: crypto.randomUUID() })) || []);
+    setEditingId(publication.id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const createPublication = async (status: PublicationStatus) => {
@@ -313,7 +355,7 @@ export function Publications() {
     try {
       const now = new Date().toISOString();
       const media = await uploadMediaDrafts();
-      await addDoc(collection(db, 'publications'), {
+      const payload = {
         title: formData.title.trim(),
         channel: formData.channel,
         priority: formData.priority,
@@ -322,15 +364,19 @@ export function Publications() {
         objective: formData.objective.trim(),
         targetAudience: formData.targetAudience.trim(),
         content: formData.content.trim() || 'Mídia enviada para aprovação.',
+        driveUrl: formData.driveUrl.trim(),
         notes: formData.notes.trim(),
         media,
         status,
-        createdBy: user.uid,
-        creatorName: user.name,
-        createdAt: now,
         updatedAt: now,
         ...(status === 'em_revisao' ? { submittedAt: now } : {}),
-      });
+      };
+
+      if (editingId) {
+        await updateDoc(doc(db, 'publications', editingId), payload);
+      } else {
+        await addDoc(collection(db, 'publications'), { ...payload, createdBy: user.uid, creatorName: user.name, createdAt: now });
+      }
       resetForm();
     } catch (error) {
       console.error('Erro ao criar publicação:', error);
@@ -485,7 +531,7 @@ export function Publications() {
         <div className="dark-card p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4 mb-5">
             <div>
-              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Nova publicação</h2>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{editingId ? 'Editar publicação' : 'Nova publicação'}</h2>
               <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                 Registre o texto, canal e prazo para aprovação.
               </p>
@@ -500,80 +546,82 @@ export function Publications() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Field label="Título *">
-              <input
-                value={formData.title}
-                onChange={(event) => updateForm('title', event.target.value)}
-                className="dark-input"
-                placeholder="Ex: Comunicado sobre convenção coletiva"
-              />
-            </Field>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <Field label="Título da Publicação *">
+                  <input
+                    value={formData.title}
+                    onChange={(event) => updateForm('title', event.target.value)}
+                    className="dark-input"
+                    placeholder="Ex: Comunicado sobre convenção coletiva"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Field label="Canal">
+                  <select value={formData.channel} onChange={(event) => updateForm('channel', event.target.value)} className="dark-input">
+                    {Object.entries(channelConfig).map(([key, config]) => (
+                      <option key={key} value={key}>{config.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Prioridade">
+                  <select value={formData.priority} onChange={(event) => updateForm('priority', event.target.value)} className="dark-input">
+                    <option value="alta">Alta</option>
+                    <option value="media">Média</option>
+                    <option value="baixa">Baixa</option>
+                  </select>
+                </Field>
+                <Field label="Link do Drive">
+                  <input
+                    value={formData.driveUrl}
+                    onChange={(event) => updateForm('driveUrl', event.target.value)}
+                    className="dark-input"
+                    placeholder="Link da pasta/slides"
+                  />
+                </Field>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Canal">
-                <select value={formData.channel} onChange={(event) => updateForm('channel', event.target.value)} className="dark-input">
-                  {Object.entries(channelConfig).map(([key, config]) => (
-                    <option key={key} value={key}>{config.label}</option>
-                  ))}
-                </select>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <Field label="Objetivo / Público">
+                <input
+                  value={formData.objective}
+                  onChange={(event) => updateForm('objective', event.target.value)}
+                  className="dark-input"
+                  placeholder="O que e para quem?"
+                />
               </Field>
-              <Field label="Prioridade">
-                <select value={formData.priority} onChange={(event) => updateForm('priority', event.target.value)} className="dark-input">
-                  <option value="alta">Alta</option>
-                  <option value="media">Média</option>
-                  <option value="baixa">Baixa</option>
-                </select>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Data Prevista">
+                  <input
+                    type="date"
+                    value={formData.requestedPublishDate}
+                    onChange={(event) => updateForm('requestedPublishDate', event.target.value)}
+                    className="dark-input"
+                  />
+                </Field>
+                <Field label="Hora">
+                  <input
+                    type="time"
+                    value={formData.requestedPublishTime}
+                    onChange={(event) => updateForm('requestedPublishTime', event.target.value)}
+                    className="dark-input"
+                  />
+                </Field>
+              </div>
+              <Field label="Observações">
+                <input
+                  value={formData.notes}
+                  onChange={(event) => updateForm('notes', event.target.value)}
+                  className="dark-input"
+                  placeholder="Observações internas..."
+                />
               </Field>
             </div>
 
-            <Field label="Objetivo">
-              <input
-                value={formData.objective}
-                onChange={(event) => updateForm('objective', event.target.value)}
-                className="dark-input"
-                placeholder="O que esta publicação precisa resolver?"
-              />
-            </Field>
-
-            <Field label="Público">
-              <input
-                value={formData.targetAudience}
-                onChange={(event) => updateForm('targetAudience', event.target.value)}
-                className="dark-input"
-                placeholder="Associados, diretoria, imprensa..."
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Data sugerida">
-                <input
-                  type="date"
-                  value={formData.requestedPublishDate}
-                  onChange={(event) => updateForm('requestedPublishDate', event.target.value)}
-                  className="dark-input"
-                />
-              </Field>
-              <Field label="Horário">
-                <input
-                  type="time"
-                  value={formData.requestedPublishTime}
-                  onChange={(event) => updateForm('requestedPublishTime', event.target.value)}
-                  className="dark-input"
-                />
-              </Field>
-            </div>
-
-            <Field label="Observações">
-              <input
-                value={formData.notes}
-                onChange={(event) => updateForm('notes', event.target.value)}
-                className="dark-input"
-                placeholder="Imagem, anexo, revisão jurídica, impulsionamento..."
-              />
-            </Field>
-
-            <div className="lg:col-span-2">
+            <div>
               <Field label="Texto da publicação *">
                 <textarea
                   value={formData.content}
@@ -583,7 +631,8 @@ export function Publications() {
                 />
               </Field>
             </div>
-            <div className="lg:col-span-2 p-4 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+
+            <div className="p-4 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
               <div className="flex flex-col lg:flex-row lg:items-end gap-3">
                 <div className="flex-1">
                   <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
@@ -608,31 +657,41 @@ export function Publications() {
                   </label>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-2 flex-[2]">
-                  <select
-                    value={mediaUrlType}
-                    onChange={(event) => setMediaUrlType(event.target.value as PublicationMediaType)}
-                    className="dark-input sm:w-36"
-                    aria-label="Tipo de mídia"
-                  >
-                    <option value="image">Imagem</option>
-                    <option value="video">Vídeo</option>
-                  </select>
-                  <input
-                    value={mediaUrl}
-                    onChange={(event) => setMediaUrl(event.target.value)}
-                    className="dark-input"
-                    placeholder="Ou cole um link de imagem/vídeo"
-                  />
-                  <button
-                    type="button"
-                    onClick={addMediaLink}
-                    disabled={!mediaUrl.trim() || mediaDrafts.length >= maxMediaItems}
-                    className="px-4 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
-                    style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
-                  >
-                    Adicionar
-                  </button>
+                <div className="flex flex-col gap-3 flex-[2]">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={mediaUrlType}
+                      onChange={(event) => setMediaUrlType(event.target.value as PublicationMediaType)}
+                      className="dark-input sm:w-36"
+                      aria-label="Tipo de mídia"
+                    >
+                      <option value="image">Imagem</option>
+                      <option value="video">Vídeo</option>
+                    </select>
+                    <input
+                      value={mediaUrl}
+                      onChange={(event) => setMediaUrl(event.target.value)}
+                      className="dark-input flex-1"
+                      placeholder="Link da mídia (Instagram, YouTube, etc.)"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      value={thumbnailUrl}
+                      onChange={(event) => setThumbnailUrl(event.target.value)}
+                      className="dark-input flex-1"
+                      placeholder="Link da miniatura de pré-visualização (opcional)"
+                    />
+                    <button
+                      type="button"
+                      onClick={addMediaLink}
+                      disabled={!mediaUrl.trim() || mediaDrafts.length >= maxMediaItems}
+                      className="px-4 py-3 rounded-xl text-sm font-bold disabled:opacity-50 whitespace-nowrap"
+                      style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                    >
+                      Adicionar link
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -658,7 +717,7 @@ export function Publications() {
               className="px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
               style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
             >
-              {submittingStatus === 'rascunho' ? 'Salvando...' : 'Salvar rascunho'}
+              {submittingStatus === 'rascunho' ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Salvar rascunho'}
             </button>
             <button
               onClick={() => createPublication('em_revisao')}
@@ -666,7 +725,7 @@ export function Publications() {
               className="btn-premium disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
-              {submittingStatus === 'em_revisao' ? 'Enviando...' : 'Enviar para aprovação'}
+              {submittingStatus === 'em_revisao' ? 'Enviando...' : editingId ? 'Salvar e Enviar' : 'Enviar para aprovação'}
             </button>
           </div>
         </div>
@@ -706,6 +765,7 @@ export function Publications() {
               loading={actionLoadingId === publication.id}
               onSendDraft={() => sendDraftToReview(publication)}
               onApprove={() => approvePublication(publication)}
+              onEdit={() => handleEdit(publication)}
               onReject={() => rejectPublication(publication)}
               onMarkSent={() => markAsSent(publication)}
               onRemove={() => removePublication(publication)}
@@ -791,6 +851,7 @@ function PublicationCard({
   loading,
   onSendDraft,
   onApprove,
+  onEdit,
   onReject,
   onMarkSent,
   onRemove,
@@ -803,6 +864,7 @@ function PublicationCard({
   loading: boolean;
   onSendDraft: () => void;
   onApprove: () => void;
+  onEdit: () => void;
   onReject: () => void;
   onMarkSent: () => void;
   onRemove: () => void;
@@ -814,106 +876,166 @@ function PublicationCard({
   const ChannelIcon = channel.icon;
   const priority = priorityConfig[publication.priority];
 
+  // --- DEBUGGING LOGS ---
+  // Verifique o console do seu navegador para ver esses valores
+  console.log(`--- Publication: ${publication.title} (ID: ${publication.id}) ---`);
+  console.log(`  Status: ${publication.status}`);
+  console.log(`  isOwner (Criador do post): ${isOwner}`);
+  console.log(`  canApprove (Revisor): ${canApprove}`);
+  console.log(`  driveUrl (Link do Drive): ${publication.driveUrl}`);
+  console.log(`-----------------------------------------------------`);
+  // --- FIM DEBUGGING LOGS ---
+
   return (
-    <div className="dark-card p-4 sm:p-5">
-      <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+    <div className="dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
+      <div className="flex flex-col lg:flex-row gap-5">
+        {/* Capa Compacta */}
+        <div className="w-full lg:w-48 shrink-0 aspect-video lg:aspect-square relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
+          {publication.media && publication.media[0] ? (
+            <img
+              src={(publication.media[0] as any).thumbnailUrl || publication.media[0].url}
+              className="w-full h-full object-cover"
+              alt={publication.title}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+              <ImageIcon className="w-8 h-8 opacity-20" />
+            </div>
+          )}
+          <div className="absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
+            CAPA
+          </div>
+        </div>
+
+        {/* Conteúdo Principal */}
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5" style={{ background: status.bg, color: status.color }}>
+            <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}>
               <StatusIcon className="w-3.5 h-3.5" />
               {status.label}
             </span>
-            <span className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5" style={{ background: 'var(--bg-input)', color: channel.color }}>
+            <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: 'var(--bg-input)', color: channel.color }}>
               <ChannelIcon className="w-3.5 h-3.5" />
               {channel.label}
             </span>
-            <span className="px-3 py-1.5 rounded-xl text-xs font-bold" style={{ background: priority.bg, color: priority.color }}>
+            <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
               {priority.label}
             </span>
           </div>
 
-          <h2 className="text-lg font-black leading-tight" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-base font-black leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
             {publication.title}
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-            <Meta icon={Calendar} label="Sugestão" value={formatDate(publication.requestedPublishDate, publication.requestedPublishTime)} />
-            <Meta icon={FileText} label="Solicitado por" value={publication.creatorName} />
-            <Meta icon={Clock} label="Atualizado" value={new Date(publication.updatedAt).toLocaleDateString('pt-BR')} />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 mb-4 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
+            <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
           </div>
 
-          {(publication.objective || publication.targetAudience || publication.notes) && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-              {publication.objective && <SmallBlock label="Objetivo" value={publication.objective} />}
-              {publication.targetAudience && <SmallBlock label="Público" value={publication.targetAudience} />}
-              {publication.notes && <SmallBlock label="Observações" value={publication.notes} />}
+          {/* Alerta de Notificação para o Criador (quando reprovado) */}
+          {isOwner && publication.status === 'reprovado' && (
+            <div className="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3 animate-pulse">
+              <AlertTriangle className="w-5 h-5 text-orange-500" />
+              <div>
+                <p className="text-xs font-bold text-orange-500">Ação necessária!</p>
+                <p className="text-[10px] text-orange-600/80">O revisor solicitou alterações para você.</p>
+              </div>
             </div>
           )}
 
-          <div className="mt-4">
-            <SocialPreview publication={publication} />
+          {/* Grid de Informações Estratégicas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            {publication.objective && (
+              <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
+                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
+                <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.objective}</p>
+              </div>
+            )}
+            {publication.targetAudience && (
+              <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
+                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público-Alvo</p>
+                <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.targetAudience}</p>
+              </div>
+            )}
           </div>
 
-          {publication.media && publication.media.length > 0 && (
-            <div className="mt-4">
-              <MediaGalleryV2
-                channel={publication.channel}
-                content={publication.content}
-                creatorName={publication.creatorName}
-                media={publication.media}
-                canAnnotate={canApprove}
-                onSaveNote={onUpdateSlideNote}
-              />
+          {/* Conteúdo/Legenda da Publicação */}
+          <div className="mb-4">
+            <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">Texto da Legenda / Conteúdo:</p>
+            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
+                {publication.content}
+              </p>
+            </div>
+          </div>
+
+          {/* Feedback de Alterações (Comentários do Revisor) */}
+          {(publication.notes || publication.rejectionReason) && (
+            <div className="p-3 rounded-xl mb-4 text-xs border border-dashed" style={{ background: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.3)' }}>
+              <p className="font-bold uppercase tracking-tighter text-[9px] mb-1.5 flex items-center gap-1" style={{ color: '#f59e0b' }}>
+                <MessageCircle className="w-3 h-3" /> Comentários do Revisor:
+              </p>
+              <p className="text-[var(--text-secondary)] leading-normal italic">
+                {publication.rejectionReason || publication.notes}
+              </p>
             </div>
           )}
 
-          {publication.rejectionReason && (
-            <div className="mt-3 p-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.22)' }}>
-              <strong>Motivo:</strong> {publication.rejectionReason}
-            </div>
-          )}
-
-          {publication.publicationUrl && (
-            <a
-              href={publication.publicationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 mt-3 text-sm font-bold"
-              style={{ color: 'var(--accent)' }}
-            >
-              <ExternalLink className="w-4 h-4" />
-              Abrir publicação enviada
-            </a>
-          )}
+          <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
+            {publication.driveUrl && (
+              <a
+                href={publication.driveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 hover:bg-[#22c55e]/20 active:scale-95"
+              >
+                <Images className="w-4 h-4" />
+                Acessar Slides no Drive
+              </a>
+            )}
+            {publication.publicationUrl && (
+              <a
+                href={publication.publicationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)] hover:brightness-110 active:scale-95"
+              >
+                <Globe2 className="w-3.5 h-3.5" />
+                Ver Publicado
+              </a>
+            )}
+          </div>
         </div>
 
-        <div className="lg:w-56 flex lg:flex-col flex-wrap gap-2">
-          {publication.status === 'rascunho' && isOwner && (
-            <ActionButton icon={Send} label="Enviar para revisão" loading={loading} onClick={onSendDraft} tone="accent" />
+        {/* Ações Compactas */}
+        <div className="flex lg:flex-col justify-end gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-4 lg:pt-0 lg:pl-5 shrink-0 w-full lg:w-48">
+          {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
+            <>
+              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
+              <ActionButton icon={Edit} label="Editar Post" loading={loading} onClick={onEdit} tone="muted" />
+            </>
           )}
           {publication.status === 'em_revisao' && canApprove && (
             <>
+              {publication.driveUrl && (
+                <a
+                  href={publication.driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-[#f59e0b] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 mb-1"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Ver Publicação
+                </a>
+              )}
               <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
-              <ActionButton icon={XCircle} label="Reprovar" loading={loading} onClick={onReject} tone="danger" />
+              <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
             </>
           )}
           {publication.status === 'aprovado' && canApprove && (
-            <ActionButton icon={Send} label="Registrar envio" loading={loading} onClick={onMarkSent} tone="info" />
+            <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
           )}
-          {publication.status === 'enviado' && (
-            <div className="px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2" style={{ background: status.bg, color: status.color }}>
-              <CheckCircle className="w-4 h-4" />
-              Fluxo finalizado
-            </div>
-          )}
-          {canRemove && (
-            <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />
-          )}
-          {publication.status === 'aprovado' && !canApprove && (
-            <div className="px-4 py-3 rounded-xl text-sm" style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}>
-              Aguardando registro de envio
-            </div>
-          )}
+          {canRemove && <ActionButton icon={X} label="" loading={loading} onClick={onRemove} tone="muted" />}
         </div>
       </div>
     </div>
@@ -1065,12 +1187,29 @@ function SlidePreview({
       ? { background: '#f8fafc' }
       : { background: 'var(--bg-primary)' };
 
+  const thumbnailUrl = (item as any).thumbnailUrl;
+  const isVideoWithThumbnail = item.type === 'video' && thumbnailUrl;
+
   return (
     <div className={`${aspectClass} relative overflow-hidden`} style={wrapperStyle}>
-      {item.type === 'video' ? (
+      {item.type === 'video' && !thumbnailUrl ? (
         <video src={item.url} controls className="w-full h-full object-contain" />
       ) : (
-        <img src={item.url} alt={item.name} className={`w-full h-full ${isFeedLike ? 'object-cover' : 'object-contain'}`} loading="lazy" />
+        <>
+          <img
+            src={thumbnailUrl || item.url}
+            alt={item.name}
+            className={`w-full h-full ${isFeedLike ? 'object-cover' : 'object-contain'}`}
+            loading="lazy"
+          />
+          {isVideoWithThumbnail && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <div className="w-12 h-12 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                <Video className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          )}
+        </>
       )}
       <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-black" style={{ background: 'rgba(0,0,0,0.72)', color: 'white' }}>
         Slide {index + 1}/{total}
