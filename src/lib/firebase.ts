@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -13,6 +13,11 @@ let hasWarnedMissingVapidKey = false;
 export const loginWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
     const result = await signInWithPopup(auth, provider);
     return result.user;
   } catch (error) {
@@ -35,7 +40,7 @@ export const requestNotificationPermission = async () => {
   
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) {
-    if (!hasWarnedMissingVapidKey) {
+    if (!hasWarnedMissingVapidKey && import.meta.env.DEV) {
       console.info('VITE_FIREBASE_VAPID_KEY is not set. Push notifications are disabled in this environment.');
       hasWarnedMissingVapidKey = true;
     }

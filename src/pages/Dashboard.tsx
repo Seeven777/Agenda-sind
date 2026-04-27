@@ -7,13 +7,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { Plus, Calendar, Clock, MapPin, Navigation2, Lock, Filter, X, FileText, Download, TrendingUp, BarChart3, ChevronDown, Eye, CheckCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import jsPDF from 'jspdf';
 
 export function Dashboard() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [todayEvents, setTodayEvents] = useState<Event[]>([]);
   const [allActiveEvents, setAllActiveEvents] = useState<Event[]>([]);
@@ -311,6 +313,14 @@ export function Dashboard() {
     window.addEventListener('open-report', handleOpenReport);
     return () => window.removeEventListener('open-report', handleOpenReport);
   }, [reportMonth]);
+
+  useEffect(() => {
+    if ((location.state as { openReport?: boolean } | null)?.openReport) {
+      setShowReportModal(true);
+      generateReport(reportMonth);
+      navigate('/', { replace: true, state: null });
+    }
+  }, [location.state, navigate, reportMonth]);
 
   const categories = [
     { key: 'all', label: 'Todos', color: 'var(--accent)' },

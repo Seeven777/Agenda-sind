@@ -1,4 +1,8 @@
 // Firebase Messaging Service Worker
+const DEBUG_SW = false;
+const log = (...args) => {
+  if (DEBUG_SW) console.log(...args);
+};
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
@@ -17,7 +21,7 @@ const messaging = firebase.messaging();
 
 // Handle background messages (push notifications)
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+  log('[firebase-messaging-sw.js] Received background message:', payload);
   
   // Extract notification data
   const notificationTitle = payload.notification?.title || 'Agenda Sind';
@@ -52,13 +56,13 @@ messaging.onBackgroundMessage((payload) => {
 
   // Show the notification
   return self.registration.showNotification(notificationTitle, notificationOptions)
-    .then(() => console.log('[firebase-messaging-sw.js] Notification shown successfully'))
+    .then(() => log('[firebase-messaging-sw.js] Notification shown successfully'))
     .catch(err => console.error('[firebase-messaging-sw.js] Error showing notification:', err));
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
-  console.log('[firebase-messaging-sw.js] Notification click event:', event);
+  log('[firebase-messaging-sw.js] Notification click event:', event);
   
   // Handle dismiss action
   if (event.action === 'dismiss') {
@@ -111,12 +115,12 @@ self.addEventListener('notificationclick', (event) => {
 
 // Handle notification close
 self.addEventListener('notificationclose', (event) => {
-  console.log('[firebase-messaging-sw.js] Notification closed:', event);
+  log('[firebase-messaging-sw.js] Notification closed:', event);
 });
 
 // Handle push subscription changes
 self.addEventListener('pushsubscriptionchange', (event) => {
-  console.log('[firebase-messaging-sw.js] Push subscription changed:', event);
+  log('[firebase-messaging-sw.js] Push subscription changed:', event);
   
   event.waitUntil(
     registration.pushManager.subscribe({
@@ -124,7 +128,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
       applicationServerKey: self.registration.active?.pushManager?.applicationServerKey
     })
     .then(subscription => {
-      console.log('[firebase-messaging-sw.js] New subscription:', subscription);
+      log('[firebase-messaging-sw.js] New subscription:', subscription);
       // Here you would typically send the new subscription to your server
     })
     .catch(err => {
@@ -135,7 +139,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 
 // Handle messages from the main app
 self.addEventListener('message', (event) => {
-  console.log('[firebase-messaging-sw.js] Message from main app:', event.data);
+  log('[firebase-messaging-sw.js] Message from main app:', event.data);
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

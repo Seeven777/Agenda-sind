@@ -570,7 +570,7 @@ export function Publications() {
   }
 
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className="space-y-4 sm:space-y-6 pb-24 lg:pb-6">
       {permissionError && (
         <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444' }}>
           <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -581,25 +581,25 @@ export function Publications() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-xl sm:text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
             Publicações
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Aprovação, revisão e envio de conteúdos institucionais
           </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="btn-premium inline-flex items-center gap-2"
+          className="btn-premium inline-flex items-center justify-center gap-2 min-h-[48px]"
         >
           <Plus className="w-4 h-4" />
           Nova publicação
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3">
         <SummaryCard icon={Clock} label="Aguardando revisão" value={counts.em_revisao} color="#f59e0b" />
         <SummaryCard icon={CheckCircle} label="Aprovadas para envio" value={counts.aprovado} color="#22c55e" />
         <SummaryCard icon={Send} label="Enviadas" value={counts.enviado} color="#3b82f6" />
@@ -637,7 +637,7 @@ export function Publications() {
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-2">
                 <Field label="Canal">
                   <select value={formData.channel} onChange={(event) => updateForm('channel', event.target.value)} className="dark-input">
                     {Object.entries(channelConfig).map(([key, config]) => (
@@ -793,7 +793,7 @@ export function Publications() {
             <button
               onClick={() => createPublication('rascunho')}
               disabled={!formData.title.trim() || (!formData.content.trim() && mediaDrafts.length === 0) || submittingStatus !== null}
-              className="px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
+              className="px-5 py-3.5 sm:py-3 rounded-xl text-sm font-bold disabled:opacity-50 min-h-[48px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
             >
               {submittingStatus === 'rascunho' ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Salvar rascunho'}
@@ -801,7 +801,7 @@ export function Publications() {
             <button
               onClick={() => createPublication('em_revisao')}
               disabled={!formData.title.trim() || (!formData.content.trim() && mediaDrafts.length === 0) || submittingStatus !== null}
-              className="btn-premium disabled:opacity-50"
+              className="btn-premium disabled:opacity-50 min-h-[48px] justify-center"
             >
               <Send className="w-4 h-4" />
               {submittingStatus === 'em_revisao' ? 'Enviando...' : editingId ? 'Salvar e Enviar' : 'Enviar para aprovação'}
@@ -810,7 +810,7 @@ export function Publications() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible">
         <FilterButton active={activeStatus === 'todos'} label="Todos" count={publications.length} onClick={() => setActiveStatus('todos')} />
         {Object.entries(statusConfig).map(([status, config]) => (
           <FilterButton
@@ -824,7 +824,7 @@ export function Publications() {
         ))}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5 sm:space-y-3">
         {filteredPublications.length === 0 ? (
           <div className="dark-card empty-state">
             <div className="empty-state-icon">
@@ -871,12 +871,12 @@ export function Publications() {
 
 function SummaryCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
   return (
-    <div className="dark-card p-4">
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: `${color}22` }}>
-        <Icon className="w-4 h-4" style={{ color }} />
+    <div className="dark-card p-2.5 sm:p-4">
+      <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3" style={{ background: `${color}22` }}>
+        <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color }} />
       </div>
-      <p className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
-      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
+      <p className="text-lg sm:text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
+      <p className="text-[9px] sm:text-xs leading-tight" style={{ color: 'var(--text-muted)' }}>{label}</p>
     </div>
   );
 }
@@ -908,7 +908,7 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className="px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
+      className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 flex-shrink-0 min-h-[40px]"
       style={{
         background: active ? color : 'var(--bg-card)',
         color: active ? 'white' : 'var(--text-secondary)',
@@ -958,12 +958,13 @@ function PublicationCard({
   const ChannelIcon = channel.icon;
   const priority = priorityConfig[publication.priority];
   const canEditCard = canApprove || (isOwner && ['rascunho', 'reprovado'].includes(publication.status));
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
 
   return (
-    <div className="dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
-      <div className="flex flex-col lg:flex-row gap-5">
+    <div className="dark-card p-3 sm:p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
+      <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
         {/* Capa Compacta */}
-        <div className="w-full lg:w-48 shrink-0 aspect-video lg:aspect-square relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
+        <div className="w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
           {publication.media && publication.media[0] ? (
             <img
               src={getMediaDisplayUrl(publication.media[0])}
@@ -975,14 +976,14 @@ function PublicationCard({
               <ImageIcon className="w-8 h-8 opacity-20" />
             </div>
           )}
-          <div className="absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
+          <div className="hidden sm:block absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
             CAPA
           </div>
         </div>
 
         {/* Conteúdo Principal */}
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
             <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}>
               <StatusIcon className="w-3.5 h-3.5" />
               {status.label}
@@ -991,19 +992,69 @@ function PublicationCard({
               <ChannelIcon className="w-3.5 h-3.5" />
               {channel.label}
             </span>
-            <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
+            <span className="hidden sm:inline-flex px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
               {priority.label}
             </span>
           </div>
 
-          <h2 className="text-base font-black leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="text-sm sm:text-base font-black leading-tight line-clamp-2 sm:truncate" style={{ color: 'var(--text-primary)' }}>
             {publication.title}
           </h2>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 mb-4 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5 mb-2 sm:mb-4 text-[10px] sm:text-[11px]" style={{ color: 'var(--text-muted)' }}>
             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
-            <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
+            <span className="hidden sm:flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMobileDetails((current) => !current)}
+            className="sm:hidden inline-flex items-center gap-1.5 text-[11px] font-bold"
+            style={{ color: 'var(--accent)' }}
+          >
+            {showMobileDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {showMobileDetails ? 'Ocultar detalhes' : 'Ver detalhes'}
+          </button>
+
+          {showMobileDetails && (
+            <div className="sm:hidden mt-3 space-y-2">
+              {(publication.objective || publication.targetAudience) && (
+                <div className="grid grid-cols-1 gap-2">
+                  {publication.objective && (
+                    <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.objective}</p>
+                    </div>
+                  )}
+                  {publication.targetAudience && (
+                    <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público</p>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.targetAudience}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {publication.content && (
+                <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Legenda</p>
+                  <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">{publication.content}</p>
+                </div>
+              )}
+
+              {publication.publicationUrl && (
+                <a
+                  href={publication.publicationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)]"
+                >
+                  <Globe2 className="w-3.5 h-3.5" />
+                  Ver Publicado
+                </a>
+              )}
+            </div>
+          )}
 
           {/* Alerta de Notificação para o Criador (quando reprovado) */}
           {isOwner && publication.status === 'reprovado' && (
@@ -1017,7 +1068,7 @@ function PublicationCard({
           )}
 
           {/* Grid de Informações Estratégicas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             {publication.objective && (
               <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
                 <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
@@ -1033,7 +1084,7 @@ function PublicationCard({
           </div>
 
           {/* Conteúdo/Legenda da Publicação */}
-          <div className="mb-4">
+          <div className="hidden sm:block mb-4">
             <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">Texto da Legenda / Conteúdo:</p>
             <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
               <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
@@ -1054,7 +1105,7 @@ function PublicationCard({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
+          <div className="hidden sm:flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
             {publication.publicationUrl && (
               <a
                 href={publication.publicationUrl}
@@ -1070,13 +1121,13 @@ function PublicationCard({
         </div>
 
         {/* Ações Compactas */}
-        <div className="flex lg:flex-col justify-end gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-4 lg:pt-0 lg:pl-5 shrink-0 w-full lg:w-48">
+        <div className="grid grid-cols-2 sm:flex lg:flex-col justify-start lg:justify-end gap-2.5 sm:gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-3 lg:pt-0 lg:pl-5 shrink-0 basis-full lg:basis-auto w-full lg:w-48">
           {publication.driveUrl && (
             <a
               href={publication.driveUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 mb-1"
+              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 min-h-[46px] w-full sm:w-auto lg:w-full"
             >
               <ExternalLink className="w-4 h-4" />
               Ver Slides
@@ -1102,7 +1153,7 @@ function PublicationCard({
           {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
             <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
           )}
-          {canRemove && <ActionButton icon={X} label="" loading={loading} onClick={onRemove} tone="muted" />}
+          {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
         </div>
       </div>
     </div>
@@ -1488,10 +1539,10 @@ function ActionButton({
   tone: 'accent' | 'success' | 'danger' | 'info' | 'muted';
 }) {
   const styles = {
-    accent: { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border-color)' },
-    success: { background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.22)' },
+    accent: { background: 'var(--accent)', color: 'white', border: '1px solid var(--accent)' },
+    success: { background: '#22c55e', color: 'white', border: '1px solid #22c55e' },
     danger: { background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.22)' },
-    info: { background: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.22)' },
+    info: { background: '#3b82f6', color: 'white', border: '1px solid #3b82f6' },
     muted: { background: 'var(--bg-input)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' },
   }[tone];
 
@@ -1499,7 +1550,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={loading}
-      className="px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 flex-1 lg:flex-none"
+      className="px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 w-full sm:w-auto lg:w-full min-h-[46px] whitespace-nowrap"
       style={styles}
     >
       {loading ? <Clock className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}

@@ -5,6 +5,10 @@ import { onMessage } from 'firebase/messaging';
 // Request and save FCM token for a user
 export async function saveFCMToken(userId: string): Promise<string | null> {
   try {
+    if (!import.meta.env.VITE_FIREBASE_VAPID_KEY) {
+      return null;
+    }
+
     const token = await requestNotificationPermission();
 
     if (token) {
@@ -31,8 +35,6 @@ export async function saveFCMToken(userId: string): Promise<string | null> {
           fcmTokenUpdatedAt: new Date().toISOString()
         }, { merge: true });
       }
-
-      console.log('FCM Token saved successfully');
       return token;
     }
 
@@ -64,7 +66,6 @@ export async function getUserFCMToken(userId: string): Promise<string | null> {
 export function onForegroundMessage(callback: (payload: any) => void): (() => void) | undefined {
   if (messaging) {
     return onMessage(messaging, (payload) => {
-      console.log('Foreground message received:', payload);
       callback(payload);
     });
   }

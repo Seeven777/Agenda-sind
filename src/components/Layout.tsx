@@ -133,6 +133,14 @@ export function Layout() {
 
   const roleBadge = getRoleBadge();
   const canViewReports = isSuperAdmin(user?.email) || isBoss(user?.email) || isDiretoria(user);
+  const openReport = () => {
+    if (location.pathname === '/') {
+      window.dispatchEvent(new CustomEvent('open-report'));
+      return;
+    }
+
+    navigate('/', { state: { openReport: true } });
+  };
 
   return (
     <>
@@ -231,7 +239,7 @@ export function Layout() {
               {/* Botão Relatório - visível apenas para Admin/Diretoria */}
               {canViewReports && (
                 <button
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
+                  onClick={openReport}
                   className="flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-80"
                   style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
                 >
@@ -286,7 +294,7 @@ export function Layout() {
 
             {canViewReports && (
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent('open-report'))}
+                onClick={openReport}
                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent)' }}
                 title="Relatório"
