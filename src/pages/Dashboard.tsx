@@ -43,13 +43,31 @@ export function Dashboard() {
     return `${year}-${month}-${day}`;
   };
 
+  const parseLocalDate = (dateStr?: string) => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  };
+
+  const parseReportMonth = (monthStr?: string) => {
+    if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return new Date();
+    return parseLocalDate(`${monthStr}-01`) || new Date();
+  };
+
+  const formatEventDate = (dateStr?: string) => {
+    const date = parseLocalDate(dateStr);
+    return date ? format(date, 'dd/MM/yyyy') : 'Sem data';
+  };
+
   // Função para verificar se uma data está no mês atual
   const isInCurrentMonth = (dateStr: string) => {
     const now = new Date();
     const start = startOfMonth(now);
     const end = endOfMonth(now);
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
+    const date = parseLocalDate(dateStr);
+    if (!date) return false;
     return isWithinInterval(date, { start, end });
   };
 
@@ -130,9 +148,9 @@ export function Dashboard() {
 
   // Gerar relatório do mês
   const generateReport = async (monthStr: string) => {
-    const [year, month] = monthStr.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
+    const reportDate = parseReportMonth(monthStr);
+    const startDate = startOfMonth(reportDate);
+    const endDate = endOfMonth(reportDate);
     
     const startStr = getDateString(startDate);
     const endStr = getDateString(endDate);
@@ -147,7 +165,7 @@ export function Dashboard() {
     const events = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() } as Event))
       .filter(e => !shouldHideEventCompletely(e))
-      .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
     
     // Contadores
     const byCategory: Record<string, number> = {};
@@ -185,7 +203,7 @@ export function Dashboard() {
     yPos += 15;
     
     // Mês
-    const monthName = format(new Date(reportMonth + '-01'), 'MMMM yyyy', { locale: ptBR });
+    const monthName = format(parseReportMonth(reportMonth), 'MMMM yyyy', { locale: ptBR });
     doc.setFontSize(14);
     doc.setTextColor(100);
     doc.text(`Mês: ${monthName}`, margin, yPos);
@@ -267,7 +285,7 @@ export function Dashboard() {
         yPos = 20;
       }
       
-      const dateFormatted = format(new Date(e.date + 'T00:00:00'), 'dd/MM/yyyy');
+      const dateFormatted = formatEventDate(e.date);
       
       // Número e título
       doc.setFont('helvetica', 'bold');
@@ -743,7 +761,7 @@ export function Dashboard() {
                                 {event.title}
                               </p>
                               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                {format(new Date(event.date + 'T00:00:00'), 'dd/MM/yyyy')} às {event.time}
+                                {formatEventDate(event.date)} às {event.time || 'Sem horário'}
                                 {event.location && ` • ${event.location}`}
                               </p>
                             </div>

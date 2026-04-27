@@ -133,11 +133,14 @@ export function createEventNotificationPayload(
 ): { title: string; body: string; data: Record<string, string> } {
   const timeLabel = type === '24h' ? '24 horas' : '1 hora';
   const formattedTime = formatEventTime(event.time);
-  const formattedDate = new Date(event.date + 'T00:00:00').toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long'
-  });
+  const eventDate = /^\d{4}-\d{2}-\d{2}$/.test(event.date) ? new Date(`${event.date}T12:00:00`) : null;
+  const formattedDate = eventDate && !Number.isNaN(eventDate.getTime())
+    ? eventDate.toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      })
+    : 'data não informada';
 
   return {
     title: `⏰ Lembrete: ${event.title}`,

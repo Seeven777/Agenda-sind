@@ -45,9 +45,11 @@ export function EventCard({ event, onEdit }: EventCardProps) {
   };
 
   // Função helper para formatar datas sem problemas de fuso horário
-  const formatDateForPrint = (dateStr: string) => {
+  const formatDateForPrint = (dateStr?: string) => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return 'Sem data';
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (Number.isNaN(date.getTime())) return 'Sem data';
     return date.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
@@ -140,10 +142,11 @@ export function EventCard({ event, onEdit }: EventCardProps) {
   const status = statusConfig[event.status];
   const category = categoryConfig[event.category] || categoryConfig.outro;
 
-  const formatDate = (dateStr: string) => {
-    // Usar parsing explícito para evitar problemas de fuso horário
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return 'Sem data';
     const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de fuso
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (Number.isNaN(date.getTime())) return 'Sem data';
     return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
   };
 

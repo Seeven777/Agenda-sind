@@ -102,9 +102,18 @@ export function EventDetails() {
   };
 
   // Função helper para formatar datas sem problemas de fuso horário
-  const formatDateLocal = (dateStr: string) => {
+  const parseEventDate = (dateStr?: string, timeStr = '12:00') => {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
     const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day, 12, 0, 0);
+    const [hour = 12, minute = 0] = timeStr.split(':').map(Number);
+    const date = new Date(year, month - 1, day, hour, minute);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  };
+
+  const formatDateLocal = (dateStr?: string) => {
+    const date = parseEventDate(dateStr);
+    if (!date) return 'Sem data';
     return date.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
@@ -117,15 +126,10 @@ export function EventDetails() {
       const minute = String(date.getMinutes()).padStart(2, '0');
       return `${year}${month}${day}T${hour}${minute}00`;
     };
-    const [year, month, day] = event.date.split('-').map(Number);
-    const [hour, minute] = event.time.split(':').map(Number);
-    const startDate = new Date(year, month - 1, day, hour, minute);
-    const [endYear, endMonth, endDay] = (event.endDate || event.date).split('-').map(Number);
-    const [endHour, endMinute] = (event.endTime || '').split(':').map(Number);
-    const hasValidEndTime = event.endTime && Number.isFinite(endHour) && Number.isFinite(endMinute);
-    const endDate = hasValidEndTime && endYear && endMonth && endDay
-      ? new Date(endYear, endMonth - 1, endDay, endHour, endMinute)
-      : new Date(startDate.getTime() + 60 * 60 * 1000);
+    const startDate = parseEventDate(event.date, event.time);
+    if (!startDate) return '';
+    const endDate = parseEventDate(event.endDate || event.date, event.endTime || '')
+      || new Date(startDate.getTime() + 60 * 60 * 1000);
     const start = toGoogleLocalDate(startDate);
     const end = toGoogleLocalDate(endDate);
     const params = new URLSearchParams({ action: 'TEMPLATE', text: event.title, details: event.description || '', location: event.location, dates: `${start}/${end}` });
@@ -202,7 +206,7 @@ export function EventDetails() {
         
         <div class="info">
           <div class="label">Data de Início</div>
-          <div class="value">${new Date(event.date).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+          <div class="value">${formatDateLocal(event.date)}</div>
         </div>
         
         <div class="info">
@@ -213,7 +217,7 @@ export function EventDetails() {
         ${event.endDate ? `
         <div class="info">
           <div class="label">Data de Término</div>
-          <div class="value">${new Date(event.endDate).toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+          <div class="value">${formatDateLocal(event.endDate)}</div>
         </div>
         ` : ''}
         

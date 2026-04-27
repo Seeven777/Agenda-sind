@@ -13,11 +13,17 @@ let hasWarnedMissingVapidKey = false;
 export const loginWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
+    const forceRedirect = typeof window !== 'undefined' && window.location.search.includes('login=redirect');
+    if (forceRedirect) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
     const result = await signInWithPopup(auth, provider);
     return result.user;
   } catch (error) {
     const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: string }).code) : '';
-    if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
+    if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request' || code === 'auth/popup-closed-by-user') {
       await signInWithRedirect(auth, provider);
       return null;
     }

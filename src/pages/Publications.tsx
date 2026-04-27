@@ -961,7 +961,151 @@ function PublicationCard({
   const [showMobileDetails, setShowMobileDetails] = useState(false);
 
   return (
-    <div className="dark-card p-3 sm:p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
+    <>
+      <div className="sm:hidden dark-card overflow-hidden border-l-4" style={{ borderLeftColor: status.color }}>
+        <div className="relative h-36 bg-[var(--bg-input)]">
+          {publication.media && publication.media[0] ? (
+            <img
+              src={getMediaDisplayUrl(publication.media[0])}
+              className="w-full h-full object-cover"
+              alt={publication.title}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+              <ImageIcon className="w-9 h-9 opacity-25" />
+            </div>
+          )}
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 to-transparent" />
+          <div className="absolute left-3 right-3 bottom-3 flex items-center justify-between gap-2">
+            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md" style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}>
+              <StatusIcon className="w-3.5 h-3.5" />
+              {status.label}
+            </span>
+            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md" style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}>
+              <ChannelIcon className="w-3.5 h-3.5" />
+              {channel.label}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <h2 className="text-base font-black leading-tight line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+              {publication.title}
+            </h2>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
+            </div>
+          </div>
+
+          {isOwner && publication.status === 'reprovado' && (
+            <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-orange-500">Ação necessária</p>
+                <p className="text-[11px] text-orange-600/80">O revisor solicitou alterações.</p>
+              </div>
+            </div>
+          )}
+
+          {(publication.notes || publication.rejectionReason) && (
+            <div className="p-3 rounded-xl text-xs border border-dashed" style={{ background: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.3)' }}>
+              <p className="font-bold uppercase tracking-tighter text-[9px] mb-1.5 flex items-center gap-1" style={{ color: '#f59e0b' }}>
+                <MessageCircle className="w-3 h-3" /> Comentários
+              </p>
+              <p className="text-[var(--text-secondary)] leading-normal italic">
+                {publication.rejectionReason || publication.notes}
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowMobileDetails((current) => !current)}
+            className="w-full min-h-[42px] rounded-xl inline-flex items-center justify-center gap-2 text-xs font-bold"
+            style={{ background: 'var(--bg-input)', color: 'var(--accent)', border: '1px solid var(--border-subtle)' }}
+          >
+            {showMobileDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {showMobileDetails ? 'Ocultar detalhes' : 'Ver detalhes do card'}
+          </button>
+
+          {showMobileDetails && (
+            <div className="space-y-2">
+              {(publication.objective || publication.targetAudience) && (
+                <div className="grid grid-cols-1 gap-2">
+                  {publication.objective && (
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.objective}</p>
+                    </div>
+                  )}
+                  {publication.targetAudience && (
+                    <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público</p>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.targetAudience}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {publication.content && (
+                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Legenda</p>
+                  <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">{publication.content}</p>
+                </div>
+              )}
+
+              {publication.publicationUrl && (
+                <a
+                  href={publication.publicationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)]"
+                >
+                  <Globe2 className="w-3.5 h-3.5" />
+                  Ver Publicado
+                </a>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-[var(--border-subtle)]">
+            {publication.driveUrl && (
+              <a
+                href={publication.driveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="col-span-2 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-bold bg-[#ff6f0f] text-white min-h-[48px]"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Ver Slides
+              </a>
+            )}
+            {canEditCard && publication.status !== 'enviado' && (
+              <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
+            )}
+            {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
+              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
+            )}
+            {publication.status === 'em_revisao' && canApprove && (
+              <>
+                <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
+                <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
+              </>
+            )}
+            {publication.status === 'aprovado' && canApprove && (
+              <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
+            )}
+            {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
+              <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
+            )}
+            {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden sm:block dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
       <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
         {/* Capa Compacta */}
         <div className="w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
@@ -1005,56 +1149,6 @@ function PublicationCard({
             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
             <span className="hidden sm:flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowMobileDetails((current) => !current)}
-            className="sm:hidden inline-flex items-center gap-1.5 text-[11px] font-bold"
-            style={{ color: 'var(--accent)' }}
-          >
-            {showMobileDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            {showMobileDetails ? 'Ocultar detalhes' : 'Ver detalhes'}
-          </button>
-
-          {showMobileDetails && (
-            <div className="sm:hidden mt-3 space-y-2">
-              {(publication.objective || publication.targetAudience) && (
-                <div className="grid grid-cols-1 gap-2">
-                  {publication.objective && (
-                    <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.objective}</p>
-                    </div>
-                  )}
-                  {publication.targetAudience && (
-                    <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                      <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público</p>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{publication.targetAudience}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {publication.content && (
-                <div className="p-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Legenda</p>
-                  <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">{publication.content}</p>
-                </div>
-              )}
-
-              {publication.publicationUrl && (
-                <a
-                  href={publication.publicationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)]"
-                >
-                  <Globe2 className="w-3.5 h-3.5" />
-                  Ver Publicado
-                </a>
-              )}
-            </div>
-          )}
 
           {/* Alerta de Notificação para o Criador (quando reprovado) */}
           {isOwner && publication.status === 'reprovado' && (
@@ -1157,6 +1251,7 @@ function PublicationCard({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
