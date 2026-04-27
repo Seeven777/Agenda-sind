@@ -91,11 +91,14 @@ service cloud.firestore {
              mediaItem.type in ['image', 'video'] &&
              mediaItem.name is string && mediaItem.name.size() > 0 && mediaItem.name.size() <= 200 &&
              mediaItem.url is string && mediaItem.url.size() > 0 && mediaItem.url.size() <= 900000 &&
+             (!('thumbnailUrl' in mediaItem) || (mediaItem.thumbnailUrl is string && mediaItem.thumbnailUrl.size() <= 900000)) &&
+             (!('originalSize' in mediaItem) || mediaItem.originalSize is number) &&
+             (!('storedAsPreview' in mediaItem) || mediaItem.storedAsPreview is bool) &&
              (!('note' in mediaItem) || (mediaItem.note is string && mediaItem.note.size() <= 1000));
     }
 
     function isValidPublicationMediaList(media) {
-      return media is list && media.size() <= 10 &&
+      return media is list && media.size() <= 20 &&
              (media.size() < 1 || isValidPublicationMediaItem(media[0])) &&
              (media.size() < 2 || isValidPublicationMediaItem(media[1])) &&
              (media.size() < 3 || isValidPublicationMediaItem(media[2])) &&
@@ -105,7 +108,17 @@ service cloud.firestore {
              (media.size() < 7 || isValidPublicationMediaItem(media[6])) &&
              (media.size() < 8 || isValidPublicationMediaItem(media[7])) &&
              (media.size() < 9 || isValidPublicationMediaItem(media[8])) &&
-             (media.size() < 10 || isValidPublicationMediaItem(media[9]));
+             (media.size() < 10 || isValidPublicationMediaItem(media[9])) &&
+             (media.size() < 11 || isValidPublicationMediaItem(media[10])) &&
+             (media.size() < 12 || isValidPublicationMediaItem(media[11])) &&
+             (media.size() < 13 || isValidPublicationMediaItem(media[12])) &&
+             (media.size() < 14 || isValidPublicationMediaItem(media[13])) &&
+             (media.size() < 15 || isValidPublicationMediaItem(media[14])) &&
+             (media.size() < 16 || isValidPublicationMediaItem(media[15])) &&
+             (media.size() < 17 || isValidPublicationMediaItem(media[16])) &&
+             (media.size() < 18 || isValidPublicationMediaItem(media[17])) &&
+             (media.size() < 19 || isValidPublicationMediaItem(media[18])) &&
+             (media.size() < 20 || isValidPublicationMediaItem(media[19]));
     }
 
     function isValidPublication(data) {
@@ -124,6 +137,7 @@ service cloud.firestore {
              (!('requestedPublishTime' in data) || (data.requestedPublishTime is string && data.requestedPublishTime.size() < 10)) &&
              (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
              (!('media' in data) || isValidPublicationMediaList(data.media)) &&
+             (!('driveUrl' in data) || (data.driveUrl is string && data.driveUrl.size() <= 2000)) &&
              (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 1000)) &&
              (!('publicationUrl' in data) || (data.publicationUrl is string && data.publicationUrl.size() <= 1000)) &&
              (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() < 50)) &&

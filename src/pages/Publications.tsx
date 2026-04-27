@@ -65,10 +65,9 @@ const emptyForm: PublicationFormData = {
   notes: '',
 };
 
-const maxMediaItems = 100;
-const maxMediaSize = 100 * 1024 * 1024;
-const maxInlineMediaBytes = 850 * 1024; // Firestore tem limite de 1MB por documento.
-const maxInlineDocumentBytes = 10 * 1024 * 1024;
+const maxMediaItems = 20;
+const maxInlineMediaBytes = 140 * 1024;
+const maxInlineDocumentBytes = 850 * 1024;
 
 const statusConfig: Record<PublicationStatus, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   rascunho: { label: 'Rascunho', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: FileText },
@@ -97,6 +96,7 @@ const priorityConfig: Record<Priority, { label: string; color: string; bg: strin
 function formatDate(date?: string, time?: string) {
   if (!date) return 'Sem data sugerida';
   const [year, month, day] = date.split('-').map(Number);
+  if (!year || !month || !day) return 'Sem data sugerida';
   const dateObj = new Date(year, month - 1, day, 12, 0, 0);
   return `${dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}${time ? ` às ${time}` : ''}`;
 }
@@ -137,7 +137,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 async function compressImageFile(file: File): Promise<string> {
   const source = await fileToDataUrl(file);
   const image = await loadImage(source);
-  const maxSide = 1400;
+  const maxSide = 900;
   const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
   let width = Math.max(1, Math.round(image.width * scale));
   let height = Math.max(1, Math.round(image.height * scale));
@@ -148,17 +148,79 @@ async function compressImageFile(file: File): Promise<string> {
   if (!ctx) return source;
 
   ctx.drawImage(image, 0, 0, width, height);
-  const qualities = [0.7, 0.5, 0.3, 0.2]; // Qualidades progressivamente menores
+  const qualities = [0.72, 0.58, 0.44, 0.32, 0.22];
   for (const quality of qualities) {
     const dataUrl = canvas.toDataURL('image/jpeg', quality);
-    if (dataUrl.length <= 250 * 1024) return dataUrl; // Tenta manter cada imagem < 250KB
+    if (dataUrl.length <= maxInlineMediaBytes) return dataUrl;
   }
 
-  return canvas.toDataURL('image/jpeg', 0.15);
+  return canvas.toDataURL('image/jpeg', 0.16);
 }
 
 function getTextBytes(value: string) {
   return new Blob([value]).size;
+}
+
+function cleanForFirestore<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanForFirestore(item)).filter((item) => item !== undefined) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      if (item === undefined) return;
+      cleaned[key] = cleanForFirestore(item);
+    });
+    return cleaned as T;
+  }
+
+  return value;
+}
+
+function getMediaDisplayUrl(media?: PublicationMedia) {
+  return media?.thumbnailUrl || media?.url || '';
+}
+
+function getLinkName(url: string) {
+  try {
+    const parsed = new URL(url);
+    const name = parsed.pathname.split('/').filter(Boolean).pop();
+    return name || parsed.hostname || 'Link de mídia';
+  } catch {
+    return url.split('/').pop()?.split('?')[0] || 'Link de mídia';
+  }
+}
+
+function normalizePublication(id: string, data: Partial<PublicationApproval>): PublicationApproval {
+  return {
+    id,
+    title: data.title || 'Publicação sem título',
+    channel: data.channel || 'instagram',
+    status: data.status || 'rascunho',
+    content: data.content || '',
+    priority: data.priority || 'media',
+    createdBy: data.createdBy || '',
+    creatorName: data.creatorName || 'Agenda Sind',
+    createdAt: data.createdAt || new Date(0).toISOString(),
+    updatedAt: data.updatedAt || data.createdAt || new Date(0).toISOString(),
+    requestedPublishDate: data.requestedPublishDate || '',
+    requestedPublishTime: data.requestedPublishTime || '',
+    objective: data.objective || '',
+    targetAudience: data.targetAudience || '',
+    driveUrl: data.driveUrl || '',
+    notes: data.notes || '',
+    media: Array.isArray(data.media) ? data.media.filter((item) => item && item.url) : [],
+    rejectionReason: data.rejectionReason || '',
+    publicationUrl: data.publicationUrl || '',
+    submittedAt: data.submittedAt,
+    approvedBy: data.approvedBy,
+    approvedByName: data.approvedByName,
+    approvedAt: data.approvedAt,
+    sentBy: data.sentBy,
+    sentByName: data.sentByName,
+    sentAt: data.sentAt,
+  };
 }
 
 export function Publications() {
@@ -186,7 +248,7 @@ export function Publications() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setPublications(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as PublicationApproval)));
+        setPublications(snapshot.docs.map((item) => normalizePublication(item.id, item.data() as Partial<PublicationApproval>)));
         setPermissionError(null);
         setLoading(false);
       },
@@ -203,7 +265,7 @@ export function Publications() {
   const counts = useMemo(() => {
     return publications.reduce<Record<PublicationStatus, number>>(
       (acc, publication) => {
-        acc[publication.status] += 1;
+        acc[publication.status] = (acc[publication.status] || 0) + 1;
         return acc;
       },
       { rascunho: 0, em_revisao: 0, aprovado: 0, reprovado: 0, enviado: 0 }
@@ -228,7 +290,6 @@ export function Publications() {
     const skippedVideos = Array.from(files).filter((file) => file.type.startsWith('video/')).length;
     const selectedFiles = Array.from(files)
       .filter((file) => file.type.startsWith('image/'))
-      .filter((file) => file.size <= maxMediaSize)
       .slice(0, Math.max(availableSlots, 0));
 
     if (skippedVideos > 0) {
@@ -245,6 +306,8 @@ export function Publications() {
       file,
       isLocal: true,
       note: '',
+      originalSize: file.size,
+      storedAsPreview: true,
     }));
 
     setMediaDrafts((current) => [...current, ...drafts]);
@@ -259,7 +322,7 @@ export function Publications() {
       {
         id: `${url}-${Date.now()}`,
         type: mediaUrlType || inferMediaType(url),
-        name: url.split('/').pop()?.split('?')[0] || 'Link de mídia',
+        name: getLinkName(url),
         url,
         thumbnailUrl: thumbnailUrl.trim() || undefined,
         note: '',
@@ -287,13 +350,15 @@ export function Publications() {
     let inlineBytes = getTextBytes(formData.title + formData.content + formData.notes);
     for (const media of mediaDrafts) {
       if (!media.file) {
-        uploadedMedia.push({
+        uploadedMedia.push(cleanForFirestore({
           type: media.type,
           name: media.name,
           url: media.url,
           thumbnailUrl: media.thumbnailUrl,
+          originalSize: media.originalSize,
+          storedAsPreview: media.storedAsPreview,
           note: media.note || ''
-        } as any);
+        }));
         continue;
       }
 
@@ -304,12 +369,19 @@ export function Publications() {
       const dataUrl = await compressImageFile(media.file);
       const dataUrlBytes = getTextBytes(dataUrl);
 
-      if (inlineBytes + dataUrlBytes > maxInlineMediaBytes) {
-        throw new Error('As imagens ultrapassam o limite do Firestore. Use menos fotos ou imagens menores.');
+      if (inlineBytes + dataUrlBytes > maxInlineDocumentBytes) {
+        throw new Error('O card ficou grande demais para o Firestore. Mantenha os arquivos completos no Drive e deixe no app apenas as capas/prévias necessárias.');
       }
 
       inlineBytes += dataUrlBytes;
-      uploadedMedia.push({ type: media.type, name: sanitizeFileName(media.name), url: dataUrl, note: media.note || '' });
+      uploadedMedia.push(cleanForFirestore({
+        type: media.type,
+        name: sanitizeFileName(media.name),
+        url: dataUrl,
+        note: media.note || '',
+        originalSize: media.originalSize || media.file.size,
+        storedAsPreview: true,
+      }));
     }
 
     return uploadedMedia;
@@ -355,7 +427,7 @@ export function Publications() {
     try {
       const now = new Date().toISOString();
       const media = await uploadMediaDrafts();
-      const payload = {
+      const payload = cleanForFirestore({
         title: formData.title.trim(),
         channel: formData.channel,
         priority: formData.priority,
@@ -370,7 +442,7 @@ export function Publications() {
         status,
         updatedAt: now,
         ...(status === 'em_revisao' ? { submittedAt: now } : {}),
-      };
+      });
 
       if (editingId) {
         await updateDoc(doc(db, 'publications', editingId), payload);
@@ -449,7 +521,7 @@ export function Publications() {
     setActionLoadingId(publication.id);
     try {
       await updateDoc(doc(db, 'publications', publication.id), {
-        ...updates,
+        ...cleanForFirestore(updates),
         updatedAt: new Date().toISOString(),
       });
       return true;
@@ -475,6 +547,13 @@ export function Publications() {
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+  const clearPublicationMedia = async (publication: PublicationApproval) => {
+    const confirmed = window.confirm(`Remover as imagens salvas no app da publicação "${publication.title}"? O card continuará com texto, status e link do Drive.`);
+    if (!confirmed) return;
+
+    await updatePublication(publication, { media: [] });
   };
 
   const isOwner = (publication: PublicationApproval) => publication.createdBy === user?.uid;
@@ -769,6 +848,7 @@ export function Publications() {
               onReject={() => rejectPublication(publication)}
               onMarkSent={() => markAsSent(publication)}
               onRemove={() => removePublication(publication)}
+              onClearMedia={() => clearPublicationMedia(publication)}
               onUpdateSlideNote={(mediaIndex, note) => updateSlideNote(publication, mediaIndex, note)}
             />
           ))
@@ -855,6 +935,7 @@ function PublicationCard({
   onReject,
   onMarkSent,
   onRemove,
+  onClearMedia,
   onUpdateSlideNote,
 }: {
   publication: PublicationApproval;
@@ -868,6 +949,7 @@ function PublicationCard({
   onReject: () => void;
   onMarkSent: () => void;
   onRemove: () => void;
+  onClearMedia: () => void;
   onUpdateSlideNote: (mediaIndex: number, note: string) => void;
 }) {
   const status = statusConfig[publication.status];
@@ -875,16 +957,7 @@ function PublicationCard({
   const channel = channelConfig[publication.channel] || channelConfig.outro;
   const ChannelIcon = channel.icon;
   const priority = priorityConfig[publication.priority];
-
-  // --- DEBUGGING LOGS ---
-  // Verifique o console do seu navegador para ver esses valores
-  console.log(`--- Publication: ${publication.title} (ID: ${publication.id}) ---`);
-  console.log(`  Status: ${publication.status}`);
-  console.log(`  isOwner (Criador do post): ${isOwner}`);
-  console.log(`  canApprove (Revisor): ${canApprove}`);
-  console.log(`  driveUrl (Link do Drive): ${publication.driveUrl}`);
-  console.log(`-----------------------------------------------------`);
-  // --- FIM DEBUGGING LOGS ---
+  const canEditCard = canApprove || (isOwner && ['rascunho', 'reprovado'].includes(publication.status));
 
   return (
     <div className="dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
@@ -893,7 +966,7 @@ function PublicationCard({
         <div className="w-full lg:w-48 shrink-0 aspect-video lg:aspect-square relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
           {publication.media && publication.media[0] ? (
             <img
-              src={(publication.media[0] as any).thumbnailUrl || publication.media[0].url}
+              src={getMediaDisplayUrl(publication.media[0])}
               className="w-full h-full object-cover"
               alt={publication.title}
             />
@@ -1010,7 +1083,7 @@ function PublicationCard({
             </a>
           )}
 
-          {(isOwner || canApprove) && publication.status !== 'enviado' && (
+          {canEditCard && publication.status !== 'enviado' && (
             <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
           )}
 
@@ -1025,6 +1098,9 @@ function PublicationCard({
           )}
           {publication.status === 'aprovado' && canApprove && (
             <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
+          )}
+          {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
+            <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
           )}
           {canRemove && <ActionButton icon={X} label="" loading={loading} onClick={onRemove} tone="muted" />}
         </div>
@@ -1178,7 +1254,7 @@ function SlidePreview({
       ? { background: '#f8fafc' }
       : { background: 'var(--bg-primary)' };
 
-  const thumbnailUrl = (item as any).thumbnailUrl;
+  const thumbnailUrl = item.thumbnailUrl;
   const isVideoWithThumbnail = item.type === 'video' && thumbnailUrl;
 
   return (

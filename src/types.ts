@@ -105,7 +105,7 @@ export interface PublicationApproval {
   requestedPublishDate?: string;
   requestedPublishTime?: string;
   priority: Priority;
-  driveUrl: string;
+  driveUrl?: string;
   notes?: string;
   media?: PublicationMedia[];
   rejectionReason?: string;
@@ -128,4 +128,7 @@ export interface PublicationMedia {
   url: string;
   name: string;
   note?: string;
+  thumbnailUrl?: string;
+  originalSize?: number;
+  storedAsPreview?: boolean;
 }
