@@ -7,7 +7,13 @@ export default function UpdatePopup() {
 
   useEffect(() => {
     // O timer garante que o pop-up abra 1 segundo após o carregamento da página
-    const timer = setTimeout(() => setIsOpen(true), 1000);
+    const storageKey = 'agenda-sind-update-popup-v2';
+    if (localStorage.getItem(storageKey) === 'seen') return;
+
+    const timer = setTimeout(() => {
+      setIsOpen(true);
+      localStorage.setItem(storageKey, 'seen');
+    }, 1000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -33,12 +39,13 @@ export default function UpdatePopup() {
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-[2rem] shadow-2xl overflow-hidden border border-white/10"
+            className="relative w-full max-w-2xl login-card rounded-[24px] shadow-2xl overflow-hidden"
           >
             {/* Botão Fechar Flutuante */}
             <button
               onClick={closePopup}
-              className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
+              className="absolute top-4 right-4 z-20 w-10 h-10 rounded-xl bg-black/35 hover:bg-black/50 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
+              title="Fechar"
             >
               <X className="w-5 h-5 text-white" />
             </button>
@@ -46,7 +53,7 @@ export default function UpdatePopup() {
             {/* A imagem do Pop-up */}
             <img
               src="/prancheta4.png"
-              alt="Novas Atualizações"
+              alt="Novas atualizações"
               className="w-full h-auto block"
             />
           </motion.div>

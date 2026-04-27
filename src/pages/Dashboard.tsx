@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Event } from '../types';
+import { Event, PublicationApproval, PublicationStatus } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
-import { Plus, Calendar, Clock, MapPin, Navigation2, Lock, Filter, X, FileText, Download, TrendingUp, BarChart3, ChevronDown, Eye, CheckCircle } from 'lucide-react';
+import { Plus, Calendar, Clock, MapPin, Navigation2, Lock, Filter, X, FileText, Download, TrendingUp, BarChart3, ChevronDown, Eye, CheckCircle, ClipboardCheck, Send, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
@@ -20,6 +20,7 @@ export function Dashboard() {
   const [todayEvents, setTodayEvents] = useState<Event[]>([]);
   const [allActiveEvents, setAllActiveEvents] = useState<Event[]>([]);
   const [monthlyEvents, setMonthlyEvents] = useState<Event[]>([]);
+  const [publications, setPublications] = useState<PublicationApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showReportModal, setShowReportModal] = useState(false);
@@ -61,6 +62,35 @@ export function Dashboard() {
     return date ? format(date, 'dd/MM/yyyy') : 'Sem data';
   };
 
+  const normalizePublication = (id: string, data: Partial<PublicationApproval>): PublicationApproval => ({
+    id,
+    title: data.title || 'Publicação sem título',
+    channel: data.channel || 'instagram',
+    status: data.status || 'rascunho',
+    content: data.content || '',
+    priority: data.priority || 'media',
+    createdBy: data.createdBy || '',
+    creatorName: data.creatorName || 'Agenda Sind',
+    createdAt: data.createdAt || new Date(0).toISOString(),
+    updatedAt: data.updatedAt || data.createdAt || new Date(0).toISOString(),
+    requestedPublishDate: data.requestedPublishDate || '',
+    requestedPublishTime: data.requestedPublishTime || '',
+    objective: data.objective || '',
+    targetAudience: data.targetAudience || '',
+    driveUrl: data.driveUrl || '',
+    notes: data.notes || '',
+    media: Array.isArray(data.media) ? data.media.filter((item) => item && item.url) : [],
+    rejectionReason: data.rejectionReason || '',
+    publicationUrl: data.publicationUrl || '',
+    submittedAt: data.submittedAt,
+    approvedBy: data.approvedBy,
+    approvedByName: data.approvedByName,
+    approvedAt: data.approvedAt,
+    sentBy: data.sentBy,
+    sentByName: data.sentByName,
+    sentAt: data.sentAt,
+  });
+
   // Função para verificar se uma data está no mês atual
   const isInCurrentMonth = (dateStr: string) => {
     const now = new Date();
@@ -79,10 +109,12 @@ export function Dashboard() {
     const todayQuery = query(collection(db, 'events'), where('date', '==', todayStr), orderBy('time', 'asc'));
     const upcomingQuery = query(collection(db, 'events'), where('date', '>', todayStr), orderBy('date', 'asc'), orderBy('time', 'asc'), limit(10));
     const activeQuery = query(collection(db, 'events'), where('status', '==', 'agendado'));
+    const publicationsQuery = query(collection(db, 'publications'), orderBy('createdAt', 'desc'), limit(30));
     const onEventsError = (error: unknown) => {
       handleFirestoreError(error, OperationType.LIST, 'events');
       setLoading(false);
     };
+    const onPublicationsError = () => setPublications([]);
 
     const u1 = onSnapshot(todayQuery, (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
     const u2 = onSnapshot(upcomingQuery, (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
@@ -94,8 +126,13 @@ export function Dashboard() {
       setMonthlyEvents(monthEvents);
       setLoading(false);
     }, onEventsError);
+    const u4 = onSnapshot(
+      publicationsQuery,
+      (s) => setPublications(s.docs.map(d => normalizePublication(d.id, d.data() as Partial<PublicationApproval>))),
+      onPublicationsError
+    );
 
-    return () => { u1(); u2(); u3(); };
+    return () => { u1(); u2(); u3(); u4(); };
   }, [user]);
 
   const shouldHideEventCompletely = (event: Event): boolean => {
@@ -128,6 +165,42 @@ export function Dashboard() {
   const filteredAllEvents = allActiveEvents.filter(fullFilterFn);
   const todayFiltered = todayEvents.filter(basicFilterFn);
   const upcomingFiltered = upcomingEvents.filter(basicFilterFn);
+  const publicationCounts = publications.reduce<Record<PublicationStatus, number>>(
+    (acc, publication) => {
+      acc[publication.status] = (acc[publication.status] || 0) + 1;
+      return acc;
+    },
+    { rascunho: 0, em_revisao: 0, aprovado: 0, reprovado: 0, enviado: 0 }
+  );
+  const pendingReviewPublications = publications.filter((publication) => publication.status === 'em_revisao');
+  const readyToSendPublications = publications.filter((publication) => publication.status === 'aprovado');
+  const highPriorityEvents = filteredAllEvents.filter((event) => event.priority === 'alta').slice(0, 3);
+  const nextInstitutionalActions = [
+    ...todayFiltered.slice(0, 2).map((event) => ({
+      id: `event-${event.id}`,
+      label: 'Agenda de hoje',
+      title: event.title,
+      meta: `${event.time || 'Sem horário'}${event.location ? ` • ${event.location}` : ''}`,
+      href: `/events/${event.id}`,
+      color: 'var(--accent)',
+    })),
+    ...pendingReviewPublications.slice(0, 2).map((publication) => ({
+      id: `review-${publication.id}`,
+      label: 'Aguardando aprovação',
+      title: publication.title,
+      meta: publication.creatorName,
+      href: '/publications',
+      color: '#f59e0b',
+    })),
+    ...readyToSendPublications.slice(0, 1).map((publication) => ({
+      id: `send-${publication.id}`,
+      label: 'Pronta para envio',
+      title: publication.title,
+      meta: publication.requestedPublishDate ? formatEventDate(publication.requestedPublishDate) : 'Sem data sugerida',
+      href: '/publications',
+      color: '#3b82f6',
+    })),
+  ].slice(0, 5);
 
   // Build Google Maps route URL from today's events
   const routeUrl = (() => {
@@ -161,11 +234,16 @@ export function Dashboard() {
       where('date', '<=', endStr)
     );
     
-    const snapshot = await getDocs(q);
-    const events = snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() } as Event))
-      .filter(e => !shouldHideEventCompletely(e))
-      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+    let events: Event[] = [];
+    try {
+      const snapshot = await getDocs(q);
+      events = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() } as Event))
+        .filter(e => !shouldHideEventCompletely(e))
+        .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'events');
+    }
     
     // Contadores
     const byCategory: Record<string, number> = {};
@@ -378,12 +456,12 @@ export function Dashboard() {
   }
 
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className="space-y-5 sm:space-y-6 pb-24 lg:pb-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight page-header" style={{ color: 'var(--text-primary)' }}>
-            Olá, {user?.name?.split(' ')[0]} 👋
+            Olá, {user?.name?.split(' ')[0]}
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -399,6 +477,96 @@ export function Dashboard() {
           Novo Evento
         </Link>
       </div>
+
+      {/* Executive Command Center */}
+      <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-4">
+        <div className="dark-card executive-panel overflow-hidden p-5 sm:p-6 relative">
+          <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg,var(--accent),#22c55e,#3b82f6)' }} />
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider mb-4" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                <TrendingUp className="w-3.5 h-3.5" />
+                Central executiva
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight" style={{ color: 'var(--text-primary)' }}>
+                Operação institucional em tempo real
+              </h2>
+              <p className="text-sm sm:text-base mt-2 max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
+                Agenda, comunicação e aprovações reunidas para dar clareza ao que precisa acontecer agora.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:min-w-[280px]">
+              <div className="metric-tile p-3 rounded-xl">
+                <p className="text-2xl font-black" style={{ color: 'var(--accent)' }}>{todayFiltered.length}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Hoje</p>
+              </div>
+              <div className="metric-tile p-3 rounded-xl">
+                <p className="text-2xl font-black" style={{ color: '#f59e0b' }}>{publicationCounts.em_revisao}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Revisão</p>
+              </div>
+              <div className="metric-tile p-3 rounded-xl">
+                <p className="text-2xl font-black" style={{ color: '#3b82f6' }}>{publicationCounts.aprovado}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Envio</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+            <Link to="/calendar" className="action-tile p-4 rounded-xl flex items-center gap-3 transition-all hover:opacity-85 active:scale-[0.98]" style={{ background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.18)' }}>
+              <Calendar className="w-5 h-5 flex-shrink-0" style={{ color: '#3b82f6' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>Ver calendário</p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>Visão mensal</p>
+              </div>
+            </Link>
+            <Link to="/publications" className="action-tile p-4 rounded-xl flex items-center gap-3 transition-all hover:opacity-85 active:scale-[0.98]" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' }}>
+              <ClipboardCheck className="w-5 h-5 flex-shrink-0" style={{ color: '#f59e0b' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>Aprovações</p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{pendingReviewPublications.length} em revisão</p>
+              </div>
+            </Link>
+            <button onClick={handleShowReport} className="action-tile p-4 rounded-xl flex items-center gap-3 transition-all hover:opacity-85 active:scale-[0.98] text-left" style={{ background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.20)' }}>
+              <BarChart3 className="w-5 h-5 flex-shrink-0" style={{ color: '#10b981' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>Relatório</p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>Resumo do mês</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div className="dark-card p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-base font-black" style={{ color: 'var(--text-primary)' }}>Próximos passos</h2>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>O que merece atenção agora</p>
+            </div>
+            <AlertTriangle className="w-5 h-5" style={{ color: nextInstitutionalActions.length ? '#f59e0b' : '#22c55e' }} />
+          </div>
+          {nextInstitutionalActions.length > 0 ? (
+            <div className="space-y-2">
+              {nextInstitutionalActions.map((item) => (
+                <Link key={item.id} to={item.href} className="group flex items-center gap-3 p-3 rounded-xl transition-all hover:opacity-85" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="w-2 h-10 rounded-full flex-shrink-0" style={{ background: item.color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: item.color }}>{item.label}</p>
+                    <p className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>{item.title}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{item.meta}</p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 flex-shrink-0 opacity-60 group-hover:opacity-100" style={{ color: 'var(--text-muted)' }} />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="metric-tile p-4 rounded-xl text-center" style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.20)' }}>
+              <CheckCircle className="w-8 h-8 mx-auto mb-2" style={{ color: '#22c55e' }} />
+              <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Tudo sob controle</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Sem pendências críticas no momento.</p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -437,6 +605,67 @@ export function Dashboard() {
           </div>
           <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{filteredAllEvents.length}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Filtrados</p>
+        </div>
+      </div>
+
+      {/* Operational Radar */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="dark-card p-5 lg:col-span-2">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-black" style={{ color: 'var(--text-primary)' }}>Radar operacional</h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Riscos, urgências e produção institucional</p>
+            </div>
+            <Eye className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="metric-tile p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.18)' }}>
+              <p className="text-2xl font-black" style={{ color: '#ef4444' }}>{highPriorityEvents.length}</p>
+              <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Alta prioridade</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Eventos que exigem atenção</p>
+            </div>
+            <div className="metric-tile p-4 rounded-xl" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.18)' }}>
+              <p className="text-2xl font-black" style={{ color: '#f59e0b' }}>{publicationCounts.reprovado}</p>
+              <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Ajustes solicitados</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Cards que voltaram para correção</p>
+            </div>
+            <div className="metric-tile p-4 rounded-xl" style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.18)' }}>
+              <p className="text-2xl font-black" style={{ color: '#22c55e' }}>{publicationCounts.enviado}</p>
+              <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Publicações enviadas</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Histórico recente de entregas</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="dark-card p-5">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-black" style={{ color: 'var(--text-primary)' }}>Comunicação</h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Pipeline de publicações</p>
+            </div>
+            <Send className="w-5 h-5" style={{ color: '#3b82f6' }} />
+          </div>
+          <div className="space-y-3">
+            {[
+              { label: 'Rascunhos', value: publicationCounts.rascunho, color: '#94a3b8' },
+              { label: 'Em revisão', value: publicationCounts.em_revisao, color: '#f59e0b' },
+              { label: 'Aprovadas', value: publicationCounts.aprovado, color: '#22c55e' },
+              { label: 'Enviadas', value: publicationCounts.enviado, color: '#3b82f6' },
+            ].map((item) => {
+              const total = Math.max(publications.length, 1);
+              return (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>{item.label}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{item.value}</span>
+                  </div>
+                  <div className="chart-bar-track">
+                    <div className="chart-bar-fill" style={{ width: `${Math.round((item.value / total) * 100)}%`, background: item.color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LogOut, Plus, X, Bell, Sun, Moon, Settings, Crown, Home, ChevronRight, User, BarChart3, ClipboardCheck, AlertTriangle } from 'lucide-react';
+import { Calendar, LogOut, Plus, X, Bell, Sun, Moon, Settings, Crown, Home, ChevronRight, User, BarChart3, ClipboardCheck, AlertTriangle, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
@@ -280,6 +280,15 @@ export function Layout() {
         <div className="flex flex-col flex-1 min-w-0">
           {/* Mobile Header - Melhorado */}
           <header className="glass-nav sticky top-0 z-30 flex items-center h-16 px-2 gap-2 lg:hidden">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-95 flex-shrink-0"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+              title="Abrir menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
             {/* Logo */}
             <Link
               to="/"
@@ -340,7 +349,7 @@ export function Layout() {
 
           {/* Content */}
           <main className="flex-1 overflow-y-auto">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
               <Outlet />
             </div>
           </main>
@@ -352,8 +361,8 @@ export function Layout() {
               <Link
                 to="/"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
-                  location.pathname === '/' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                  "mobile-tab flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/' ? "active text-[var(--accent)]" : "text-[var(--text-muted)]"
                 )}
               >
                 <Home className="w-6 h-6" />
@@ -364,8 +373,8 @@ export function Layout() {
               <Link
                 to="/calendar"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
-                  location.pathname === '/calendar' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                  "mobile-tab flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/calendar' ? "active text-[var(--accent)]" : "text-[var(--text-muted)]"
                 )}
               >
                 <Calendar className="w-6 h-6" />
@@ -385,8 +394,8 @@ export function Layout() {
               <Link
                 to="/publications"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
-                  location.pathname === '/publications' ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                  "mobile-tab flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target",
+                  location.pathname === '/publications' ? "active text-[var(--accent)]" : "text-[var(--text-muted)]"
                 )}
               >
                 <ClipboardCheck className="w-6 h-6" />
@@ -396,7 +405,7 @@ export function Layout() {
               {/* Perfil */}
               <button
                 onClick={() => setShowProfile(true)}
-                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target"
+                className="mobile-tab flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all min-w-[60px] min-h-[60px] touch-target"
               >
                 <User className="w-6 h-6" />
                 <span className="text-[10px] font-medium text-[var(--text-muted)]">Perfil</span>

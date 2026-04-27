@@ -6,16 +6,16 @@
    ============================================ */
 
 :root {
-  --bg-primary: #0f0f13;
-  --bg-secondary: #17171f;
-  --bg-card: #1e1e2a;
-  --bg-card-hover: #252535;
-  --bg-input: #1a1a24;
+  --bg-primary: #0b0c10;
+  --bg-secondary: #14151c;
+  --bg-card: #1b1d27;
+  --bg-card-hover: #222532;
+  --bg-input: #151821;
   --border-color: rgba(255,111,15,0.2);
-  --border-subtle: rgba(255,255,255,0.06);
-  --text-primary: #f0f0fa;
-  --text-secondary: #a0a0c0;
-  --text-muted: #606080;
+  --border-subtle: rgba(255,255,255,0.075);
+  --text-primary: #f7f8fb;
+  --text-secondary: #b4bac8;
+  --text-muted: #747d91;
   --accent: #ff6f0f;
   --accent-dark: #d45c0b;
   --accent-glow: rgba(255,111,15,0.3);
@@ -37,6 +37,11 @@ html {
 
 body {
   background-color: var(--bg-primary);
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.035), transparent 210px),
+    linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
   color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -90,33 +95,115 @@ body {
 
 /* ====== Cards ====== */
 .dark-card {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 120px), var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: 14px;
   transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.18);
 }
 
-.dark-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-color);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+@media (hover: hover) {
+  .dark-card:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,0.045), transparent 120px), var(--bg-card-hover);
+    border-color: var(--border-color);
+    transform: translateY(-1px);
+    box-shadow: 0 22px 60px rgba(0,0,0,0.25);
+  }
 }
 
 /* ====== Glassmorphism ====== */
 .glass-card {
-  background: rgba(30, 30, 42, 0.8);
+  background: rgba(27, 29, 39, 0.86);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.32);
 }
 
 .glass-nav {
-  background: rgba(15, 15, 19, 0.9);
+  background: rgba(11, 12, 16, 0.88);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ====== Executive surfaces ====== */
+.executive-panel {
+  background:
+    linear-gradient(135deg, rgba(255,111,15,0.16), rgba(59,130,246,0.08) 45%, rgba(16,185,129,0.08)),
+    var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 26px 80px rgba(0,0,0,0.26);
+}
+
+.metric-tile,
+.action-tile {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.action-tile {
+  position: relative;
+  overflow: hidden;
+}
+
+.action-tile::after {
+  content: '';
+  position: absolute;
+  inset: auto 14px 10px 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.action-tile:hover::after {
+  opacity: 1;
+}
+
+.mobile-tab {
+  position: relative;
+}
+
+.mobile-tab.active {
+  background: var(--accent-soft);
+  color: var(--accent) !important;
+}
+
+.mobile-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 18px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+.login-shell {
+  background:
+    linear-gradient(135deg, rgba(255,111,15,0.10), transparent 32%),
+    linear-gradient(225deg, rgba(59,130,246,0.09), transparent 34%),
+    var(--bg-primary);
+}
+
+.login-card {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02)),
+    rgba(27,29,39,0.90);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 28px 90px rgba(0,0,0,0.36);
+}
+
+.login-side-panel {
+  background:
+    linear-gradient(135deg, rgba(255,111,15,0.14), rgba(16,185,129,0.08)),
+    rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 /* ====== Gradient Hero ====== */
@@ -130,23 +217,19 @@ body {
 .gradient-hero::before {
   content: '';
   position: absolute;
-  top: -60%;
-  right: -30%;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
-  border-radius: 50%;
+  inset: 0;
+  background:
+    linear-gradient(120deg, rgba(255,255,255,0.18), transparent 28%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0 1px, transparent 1px 14px);
+  opacity: 0.7;
 }
 
 .gradient-hero::after {
   content: '';
   position: absolute;
-  bottom: -50%;
-  left: -20%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(0,0,0,0.15) 0%, transparent 70%);
-  border-radius: 50%;
+  inset: auto 0 0 0;
+  height: 40%;
+  background: linear-gradient(0deg, rgba(0,0,0,0.16), transparent);
 }
 
 /* ====== Premium Button ====== */
@@ -368,7 +451,16 @@ select option {
 
 /* ====== Light mode overrides ====== */
 [data-theme='light'] .dark-card {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+  background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.72));
+  box-shadow: 0 12px 34px rgba(15,23,42,0.08);
+}
+
+[data-theme='light'] body {
+  background-color: #f5f7fb;
+  background-image:
+    linear-gradient(180deg, rgba(255,111,15,0.055), transparent 240px),
+    linear-gradient(90deg, rgba(15,23,42,0.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(15,23,42,0.035) 1px, transparent 1px);
 }
 
 [data-theme='light'] .glass-nav {
@@ -407,19 +499,35 @@ select option {
   background: rgba(0,0,0,0.03);
 }
 
+[data-theme='light'] .login-card,
+[data-theme='light'] .login-side-panel,
+[data-theme='light'] .metric-tile,
+[data-theme='light'] .action-tile {
+  background: rgba(255,255,255,0.78);
+  border-color: rgba(15,23,42,0.08);
+  box-shadow: 0 14px 36px rgba(15,23,42,0.08);
+}
+
+[data-theme='light'] .executive-panel {
+  background:
+    linear-gradient(135deg, rgba(255,111,15,0.12), rgba(59,130,246,0.07) 45%, rgba(16,185,129,0.08)),
+    rgba(255,255,255,0.86);
+}
+
 /* ====== Mobile Optimizations ====== */
 @media (max-width: 640px) {
   /* Main content padding */
-  .max-w-6xl.mx-auto.px-4 {
+  .max-w-6xl.mx-auto.px-4,
+  .max-w-7xl.mx-auto.px-4 {
     padding-left: 16px;
     padding-right: 16px;
   }
   
   /* Reduce card radius on mobile */
   .dark-card {
-    border-radius: 16px;
-    border: none;
-    box-shadow: none;
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.16);
     padding: 16px;
   }
   

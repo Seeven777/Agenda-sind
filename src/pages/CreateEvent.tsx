@@ -51,32 +51,48 @@ const eventSchema = z.object({
 
 type EventFormData = z.infer<typeof eventSchema>;
 
+function parseLocalDate(dateStr?: string) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toLocalDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatLocalDate(dateStr: string) {
+  return parseLocalDate(dateStr)?.toLocaleDateString('pt-BR') || dateStr;
+}
+
 function generateRecurringDates(startDate: string, type: string, count: number): string[] {
   const dates: string[] = [];
-  // Criar data base a partir da string no formato YYYY-MM-DD
-  const [year, month, day] = startDate.split('-').map(Number);
-  const baseDate = new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de fuso
+  const baseDate = parseLocalDate(startDate);
+  if (!baseDate) return dates;
   
   for (let i = 0; i < count; i++) {
     const d = new Date(baseDate);
     if (type === 'daily') d.setDate(baseDate.getDate() + i);
     else if (type === 'weekly') d.setDate(baseDate.getDate() + i * 7);
     else if (type === 'monthly') d.setMonth(baseDate.getMonth() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(toLocalDateString(d));
   }
   return dates;
 }
 
 function generateDatesUntilEndDate(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
-  // Criar datas a partir das strings no formato YYYY-MM-DD
-  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-  const start = new Date(startYear, startMonth - 1, startDay, 12, 0, 0); // Meio-dia para evitar problemas de fuso
-  const end = new Date(endYear, endMonth - 1, endDay, 12, 0, 0);
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  if (!start || !end || start > end) return dates;
   const current = new Date(start);
   while (current <= end) {
-    dates.push(current.toISOString().split('T')[0]);
+    dates.push(toLocalDateString(current));
     current.setDate(current.getDate() + 1);
   }
   return dates;
@@ -187,7 +203,7 @@ export function CreateEvent() {
     if (!user) return;
 
     if (blockedDaysWarning.length > 0 && !isBoss(user.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user)) {
-      const formattedDates = blockedDaysWarning.map(d => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')).join(', ');
+      const formattedDates = blockedDaysWarning.map(formatLocalDate).join(', ');
       alert(`Você não pode criar eventos nos seguintes dias:\n${formattedDates}`);
       return;
     }

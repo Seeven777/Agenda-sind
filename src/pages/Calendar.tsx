@@ -32,6 +32,15 @@ const getDateString = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const parseLocalDateTime = (dateStr?: string, timeStr = '12:00') => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour = 12, minute = 0] = timeStr.split(':').map(Number);
+  const date = new Date(year, month - 1, day, hour, minute);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
 export function CalendarView() {
   const { user } = useAuth();
   const [events, setEvents] = useState<any[]>([]);
@@ -56,11 +65,11 @@ export function CalendarView() {
       // Coletar TODOS os dias com eventos pessoais (de todos os usuários)
       const personalDays = new Set<string>();
       
-      const formattedEvents = snapshot.docs.map(doc => {
+      const formattedEvents = snapshot.docs.flatMap(doc => {
         const data = doc.data() as Event;
         
         // Coleta TODOS os dias com eventos pessoais (para mostrar vermelho)
-        if (data.isPersonal) {
+        if (data.isPersonal && data.date) {
           personalDays.add(data.date);
         }
         
@@ -77,17 +86,12 @@ export function CalendarView() {
         };
         
         // Usar parsing explícito para evitar problemas de fuso horário
-        const [year, month, day] = data.date.split('-').map(Number);
-        const [hour, minute] = data.time.split(':').map(Number);
-        const start = new Date(year, month - 1, day, hour, minute);
-        const [endYear, endMonth, endDay] = (data.endDate || data.date).split('-').map(Number);
-        const [endHour, endMinute] = (data.endTime || '').split(':').map(Number);
-        const hasValidEndTime = data.endTime && Number.isFinite(endHour) && Number.isFinite(endMinute);
-        const end = hasValidEndTime && endYear && endMonth && endDay
-          ? new Date(endYear, endMonth - 1, endDay, endHour, endMinute)
-          : new Date(start.getTime() + 60 * 60 * 1000);
+        const start = parseLocalDateTime(data.date, data.time);
+        if (!start) return [];
+        const end = parseLocalDateTime(data.endDate || data.date, data.endTime || '')
+          || new Date(start.getTime() + 60 * 60 * 1000);
 
-        return {
+        return [{
           id: doc.id,
           title: shouldHideDetails() ? '🔒 Compromisso Pessoal' : data.title,
           start,
@@ -95,7 +99,7 @@ export function CalendarView() {
           resource: data,
           // Marcar se deve ser oculto
           isHidden: shouldHideDetails(),
-        };
+        }];
       });
       
       setAllPersonalDays(personalDays);
