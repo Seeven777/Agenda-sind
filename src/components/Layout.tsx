@@ -7,7 +7,6 @@ import { cn } from '../lib/utils';
 import { ProfileModal } from './ProfileModal';
 import { NotificationSettings } from './NotificationSettings';
 import { isSuperAdmin, isBoss, isDiretoria } from '../lib/permissions';
-import { saveFCMToken } from '../lib/notifications';
 import UpdatePopup from './UpdatePopup';
 
 export function Layout() {
@@ -43,15 +42,6 @@ export function Layout() {
       window.removeEventListener('firestore-error', handleFirestoreNotice);
     };
   }, []);
-
-  useEffect(() => {
-    const setupNotifications = async () => {
-      if (user) {
-        await saveFCMToken(user.id);
-      }
-    };
-    setupNotifications();
-  }, [user]);
 
   // Menu base
   const baseNavigation = [

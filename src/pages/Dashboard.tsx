@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
+import React, { useEffect, useState, useCallback } from 'react';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Event, PublicationApproval, PublicationStatus } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { getCachedDocs } from '../lib/firestoreCache';
 import { isBoss, isDiretoria, canSeePersonalEvents } from '../lib/permissions';
 import { Plus, Calendar, Clock, MapPin, Navigation2, Lock, Filter, X, FileText, Download, TrendingUp, BarChart3, ChevronDown, Eye, CheckCircle, ClipboardCheck, Send, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import jsPDF from 'jspdf';
 
@@ -101,39 +102,59 @@ export function Dashboard() {
     return isWithinInterval(date, { start, end });
   };
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
-    
-    const todayStr = getDateString(new Date());
 
-    const todayQuery = query(collection(db, 'events'), where('date', '==', todayStr), orderBy('time', 'asc'));
-    const upcomingQuery = query(collection(db, 'events'), where('date', '>', todayStr), orderBy('date', 'asc'), orderBy('time', 'asc'), limit(10));
-    const activeQuery = query(collection(db, 'events'), where('status', '==', 'agendado'));
-    const publicationsQuery = query(collection(db, 'publications'), orderBy('createdAt', 'desc'), limit(30));
-    const onEventsError = (error: unknown) => {
+    setLoading(true);
+    try {
+      const now = new Date();
+      const todayStr = getDateString(now);
+      const maxUpcomingDate = getDateString(addMonths(now, 1));
+
+      // Consolidação: Uma única query para hoje e próximos eventos (reduz leituras)
+      const eventsQuery = query(
+        collection(db, 'events'),
+        where('status', '==', 'agendado'), // OTIMIZAÇÃO: Filtra documentos inativos no banco
+        where('date', '>=', todayStr),
+        where('date', '<=', maxUpcomingDate),
+        orderBy('date', 'asc'),
+        limit(50)
+      );
+
+      const publicationsQuery = query(
+        collection(db, 'publications'),
+        orderBy('createdAt', 'desc'),
+        limit(30)
+      );
+
+      const [eventsDocs, publicationsDocs] = await Promise.all([
+        getCachedDocs<Event>(`dashboard:events:${todayStr}:${maxUpcomingDate}`, eventsQuery, 2 * 60 * 1000),
+        getCachedDocs<Partial<PublicationApproval>>('dashboard:publications:latest', publicationsQuery, 2 * 60 * 1000)
+      ]);
+
+      const allFetchedEvents = eventsDocs.map(d => ({ id: d.id, ...d.data } as Event));
+
+      const todayEventsData = allFetchedEvents.filter(e => e.date === todayStr);
+      const upcomingEventsData = allFetchedEvents.filter(e => e.date > todayStr && e.status === 'agendado').slice(0, 20);
+
+      setTodayEvents(todayEventsData.sort((a, b) => a.time.localeCompare(b.time)));
+      setUpcomingEvents(upcomingEventsData);
+
+      const activeEvents = [...todayEventsData, ...upcomingEventsData].filter(e => e.status === 'agendado');
+      setAllActiveEvents(activeEvents);
+      setMonthlyEvents(activeEvents.filter(e => isInCurrentMonth(e.date)));
+
+      setPublications(publicationsDocs.map(d => normalizePublication(d.id, d.data)));
+    } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'events');
+    } finally {
       setLoading(false);
-    };
-    const onPublicationsError = () => setPublications([]);
-
-    const u1 = onSnapshot(todayQuery, (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
-    const u2 = onSnapshot(upcomingQuery, (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))), onEventsError);
-    const u3 = onSnapshot(activeQuery, (s) => { 
-      const events = s.docs.map(d => ({ id: d.id, ...d.data() } as Event));
-      setAllActiveEvents(events);
-      // Filtrar apenas eventos do mês atual
-      const monthEvents = events.filter(e => isInCurrentMonth(e.date));
-      setMonthlyEvents(monthEvents);
-      setLoading(false);
-    }, onEventsError);
-    const u4 = onSnapshot(
-      publicationsQuery,
-      (s) => setPublications(s.docs.map(d => normalizePublication(d.id, d.data() as Partial<PublicationApproval>))),
-      onPublicationsError
-    );
-
-    return () => { u1(); u2(); u3(); u4(); };
+    }
   }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const shouldHideEventCompletely = (event: Event): boolean => {
     if (!event.isPersonal) return false;
@@ -224,38 +245,38 @@ export function Dashboard() {
     const reportDate = parseReportMonth(monthStr);
     const startDate = startOfMonth(reportDate);
     const endDate = endOfMonth(reportDate);
-    
+
     const startStr = getDateString(startDate);
     const endStr = getDateString(endDate);
-    
+
     const q = query(
       collection(db, 'events'),
       where('date', '>=', startStr),
       where('date', '<=', endStr)
     );
-    
+
     let events: Event[] = [];
     try {
-      const snapshot = await getDocs(q);
-      events = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as Event))
+      const docs = await getCachedDocs<Event>(`report:events:${startStr}:${endStr}`, q, 5 * 60 * 1000);
+      events = docs
+        .map(d => ({ id: d.id, ...d.data } as Event))
         .filter(e => !shouldHideEventCompletely(e))
         .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'events');
     }
-    
+
     // Contadores
     const byCategory: Record<string, number> = {};
     const byPriority: Record<string, number> = {};
     const byStatus: Record<string, number> = {};
-    
+
     events.forEach(e => {
       byCategory[e.category] = (byCategory[e.category] || 0) + 1;
       byPriority[e.priority] = (byPriority[e.priority] || 0) + 1;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     });
-    
+
     setReportData({
       total: events.length,
       byCategory,
@@ -268,18 +289,18 @@ export function Dashboard() {
   // Exportar relatório como PDF
   const exportReport = () => {
     if (!reportData) return;
-    
+
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
     let yPos = 20;
-    
+
     // Título
     doc.setFontSize(20);
     doc.setTextColor(255, 111, 15);
     doc.text('RELATÓRIO MENSAL DE EVENTOS', pageWidth / 2, yPos, { align: 'center' });
     yPos += 15;
-    
+
     // Mês
     const monthName = format(parseReportMonth(reportMonth), 'MMMM yyyy', { locale: ptBR });
     doc.setFontSize(14);
@@ -288,12 +309,12 @@ export function Dashboard() {
     yPos += 7;
     doc.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, yPos);
     yPos += 15;
-    
+
     // Linha separadora
     doc.setDrawColor(200);
     doc.line(margin, yPos, pageWidth - margin, yPos);
     yPos += 10;
-    
+
     // Resumo Geral
     doc.setFontSize(14);
     doc.setTextColor(0);
@@ -304,7 +325,7 @@ export function Dashboard() {
     doc.setFontSize(12);
     doc.text(`Total de eventos: ${reportData.total}`, margin, yPos);
     yPos += 10;
-    
+
     // Por Categoria
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -318,7 +339,7 @@ export function Dashboard() {
       yPos += 6;
     });
     yPos += 5;
-    
+
     // Por Prioridade
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -332,7 +353,7 @@ export function Dashboard() {
       yPos += 6;
     });
     yPos += 5;
-    
+
     // Por Status
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -346,30 +367,30 @@ export function Dashboard() {
       yPos += 6;
     });
     yPos += 10;
-    
+
     // Lista de Eventos
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.text(`LISTA DE EVENTOS (${reportData.events.length})`, margin, yPos);
     yPos += 10;
-    
+
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    
+
     reportData.events.forEach((e, i) => {
       // Verificar se precisa de nova página
       if (yPos > 270) {
         doc.addPage();
         yPos = 20;
       }
-      
+
       const dateFormatted = formatEventDate(e.date);
-      
+
       // Número e título
       doc.setFont('helvetica', 'bold');
       doc.text(`${i + 1}. ${e.title}`, margin, yPos);
       yPos += 5;
-      
+
       // Detalhes
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100);
@@ -379,10 +400,10 @@ export function Dashboard() {
       yPos += 4;
       doc.text(`   Categoria: ${categoryNames[e.category] || e.category} | Prioridade: ${e.priority} | Status: ${e.status}`, margin, yPos);
       yPos += 6;
-      
+
       doc.setTextColor(0);
     });
-    
+
     // Salvar PDF
     doc.save(`relatorio-${reportMonth}.pdf`);
   };
@@ -468,8 +489,8 @@ export function Dashboard() {
           </p>
         </div>
         {/* Novo Evento - Desktop - localização mais intuitiva */}
-        <Link 
-          to="/events/create" 
+        <Link
+          to="/events/create"
           className="hidden lg:inline-flex items-center gap-3 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-105 active:scale-95"
           style={{ background: 'linear-gradient(135deg, var(--accent), #ff9a0d)', color: 'white', boxShadow: '0 4px 16px rgba(255,111,15,0.3)' }}
         >
@@ -1033,14 +1054,14 @@ export function Dashboard() {
               >
                 Fechar
               </button>
-                <button
-                  onClick={exportReport}
-                  disabled={!reportData || reportData.events.length === 0}
-                  className="btn-premium inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl font-medium disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  Exportar PDF
-                </button>
+              <button
+                onClick={exportReport}
+                disabled={!reportData || reportData.events.length === 0}
+                className="btn-premium inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl font-medium disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                Exportar PDF
+              </button>
             </div>
           </div>
         </div>

@@ -12,10 +12,15 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "gustavo13470@gmail.com" || 
+         request.auth.token.email == "jnyce6@hotmail.com");
+    }
+
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          ((request.auth.token.email == "gustavo13470@gmail.com" || request.auth.token.email == "jnyce6@hotmail.com") && request.auth.token.email_verified == true));
+        (isSuperAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
     function canApprovePublications() {
@@ -36,6 +41,7 @@ service cloud.firestore {
 
     // Verifica se o usuário atual tem o mesmo cargo que o criador do evento
     // Isso permite que usuários do mesmo departamento editem/excluam eventos uns dos outros
+    // OTIMIZAÇÃO: Só executa se não for Admin/Owner (evita leitura extra)
     function hasSameRoleAsCreator() {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 
@@ -157,8 +163,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && hasRequiredFields(['uid', 'name', 'email', 'role']) && isValidUser(request.resource.data) &&
                     ((isOwner(userId) && request.resource.data.uid == userId && request.resource.data.role == 'administrativo') || isAdmin());
+      
+      // SEGURANÇA: Impede que o usuário mude sua própria role ou isAdmin para se promover
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
-                    ((isOwner(userId) && request.resource.data.uid == resource.data.uid && request.resource.data.role == resource.data.role) || isAdmin());
+                    ((isOwner(userId) && 
+                      request.resource.data.role == resource.data.role && 
+                      request.resource.data.isAdmin == resource.data.isAdmin) || isAdmin());
       allow delete: if isAdmin();
     }
 

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import React, { useEffect, useState, useCallback } from 'react';
+import { collection, query, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, UserPermissions } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { isSuperAdmin, BOSS_EMAILS } from '../lib/permissions';
+import { getCachedDocs, invalidateFirestoreCache } from '../lib/firestoreCache';
 import { Users, Shield, Check, X, ChevronDown, ChevronUp, UserCheck, UserX, Crown, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 export function AdminPanel() {
@@ -13,24 +14,24 @@ export function AdminPanel() {
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
     const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-        setUsers(usersList);
-        setError(null);
-        setLoading(false);
-      },
-      (snapshotError) => {
-        console.error('Erro ao carregar usuários:', snapshotError);
-        setError('Não foi possível carregar os usuários. Verifique as regras do Firestore e tente novamente.');
-        setLoading(false);
-      }
-    );
+    try {
+      const docs = await getCachedDocs<User>('admin:users', q, 2 * 60 * 1000);
+      const usersList = docs.map(doc => ({ id: doc.id, ...doc.data } as User));
+      setUsers(usersList);
+      setError(null);
+    } catch (snapshotError) {
+      console.error('Erro ao carregar usuários:', snapshotError);
+      setError('Não foi possível carregar os usuários.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchUsers();
   }, []);
 
   const toggleExpand = (userId: string) => {
@@ -48,14 +49,16 @@ export function AdminPanel() {
       await updateDoc(doc(db, 'users', userToUpdate.id), {
         isActive: !userToUpdate.isActive
       });
+      invalidateFirestoreCache('admin:users');
+      await fetchUsers();
     } catch (error) {
       console.error('Error updating user:', error);
     }
   };
 
   const handlePermissionChange = async (
-    userToUpdate: User, 
-    permission: keyof UserPermissions, 
+    userToUpdate: User,
+    permission: keyof UserPermissions,
     value: boolean
   ) => {
     try {
@@ -63,10 +66,12 @@ export function AdminPanel() {
         ...(userToUpdate.permissions || {}),
         [permission]: value
       };
-      
+
       await updateDoc(doc(db, 'users', userToUpdate.id), {
         permissions: newPermissions
       });
+      invalidateFirestoreCache('admin:users');
+      await fetchUsers();
     } catch (error) {
       console.error('Error updating permissions:', error);
     }
@@ -77,6 +82,8 @@ export function AdminPanel() {
       await updateDoc(doc(db, 'users', userToUpdate.id), {
         role: newRole
       });
+      invalidateFirestoreCache('admin:users');
+      await fetchUsers();
     } catch (error) {
       console.error('Error updating role:', error);
     }
@@ -85,8 +92,8 @@ export function AdminPanel() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin" 
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
       </div>
     );
   }
@@ -115,8 +122,8 @@ export function AdminPanel() {
             Gerencie usuários e permissões do sistema
           </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 rounded-xl" 
-             style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+          style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
           <Users className="w-5 h-5" />
           <span className="font-bold">{users.length} usuários</span>
         </div>
@@ -124,8 +131,8 @@ export function AdminPanel() {
 
       {/* Info Card */}
       <div className="dark-card p-4 flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" 
-             style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
           <Shield className="w-5 h-5" style={{ color: '#3b82f6' }} />
         </div>
         <div>
@@ -150,21 +157,21 @@ export function AdminPanel() {
           return (
             <div key={userItem.id} className="dark-card overflow-hidden">
               {/* User Header */}
-              <div 
+              <div
                 className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={() => !isUserAdmin && toggleExpand(userItem.id)}
-                style={{ 
+                style={{
                   borderBottom: isExpanded ? '1px solid var(--border-subtle)' : 'none',
                   opacity: userItem.isActive === false ? 0.6 : 1
                 }}
               >
                 {/* Avatar */}
-                <div 
+                <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-white text-lg flex-shrink-0"
-                  style={{ 
-                    background: isBoss 
+                  style={{
+                    background: isBoss
                       ? 'linear-gradient(135deg, #ff6f0f, #ff9a0d)'
-                      : userItem.isActive === false 
+                      : userItem.isActive === false
                         ? '#6b7280'
                         : 'linear-gradient(135deg, #3b82f6, #60a5fa)'
                   }}
@@ -180,20 +187,20 @@ export function AdminPanel() {
                       {userItem.name}
                     </p>
                     {isCurrentUser && (
-                      <span className="text-xs px-2 py-0.5 rounded-lg" 
-                            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      <span className="text-xs px-2 py-0.5 rounded-lg"
+                        style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                         Você
                       </span>
                     )}
                     {isUserAdmin && !isBoss && (
-                      <span className="text-xs px-2 py-0.5 rounded-lg" 
-                            style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
+                      <span className="text-xs px-2 py-0.5 rounded-lg"
+                        style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
                         Admin
                       </span>
                     )}
                     {isBoss && (
-                      <span className="text-xs px-2 py-0.5 rounded-lg" 
-                            style={{ background: 'rgba(255, 111, 15, 0.15)', color: 'var(--accent)' }}>
+                      <span className="text-xs px-2 py-0.5 rounded-lg"
+                        style={{ background: 'rgba(255, 111, 15, 0.15)', color: 'var(--accent)' }}>
                         Proprietário
                       </span>
                     )}
@@ -205,10 +212,10 @@ export function AdminPanel() {
 
                 {/* Role Badge */}
                 <div className="hidden sm:block px-3 py-1 rounded-lg text-xs font-bold uppercase"
-                     style={{ 
-                       background: 'var(--bg-input)',
-                       color: 'var(--text-secondary)'
-                     }}>
+                  style={{
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-secondary)'
+                  }}>
                   {userItem.role}
                 </div>
 
@@ -216,13 +223,13 @@ export function AdminPanel() {
                 <div className="flex items-center gap-2">
                   {userItem.isActive === false ? (
                     <div className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg"
-                         style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
+                      style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
                       <UserX className="w-3 h-3" />
                       Inativo
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg"
-                         style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' }}>
+                      style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' }}>
                       <UserCheck className="w-3 h-3" />
                       Ativo
                     </div>
@@ -244,7 +251,7 @@ export function AdminPanel() {
                     {/* Role Selection */}
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider mb-2"
-                             style={{ color: 'var(--text-muted)' }}>
+                        style={{ color: 'var(--text-muted)' }}>
                         Cargo/Função
                       </label>
                       <select
@@ -264,15 +271,15 @@ export function AdminPanel() {
                     {/* Active Toggle */}
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider mb-2"
-                             style={{ color: 'var(--text-muted)' }}>
+                        style={{ color: 'var(--text-muted)' }}>
                         Status da Conta
                       </label>
                       <button
                         onClick={() => handleToggleActive(userItem)}
                         className="w-full py-2.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
                         style={{
-                          background: userItem.isActive === false 
-                            ? 'rgba(34, 197, 94, 0.15)' 
+                          background: userItem.isActive === false
+                            ? 'rgba(34, 197, 94, 0.15)'
                             : 'rgba(239, 68, 68, 0.15)',
                           color: userItem.isActive === false ? '#22c55e' : '#ef4444'
                         }}
@@ -353,6 +360,8 @@ export function AdminPanel() {
                             await updateDoc(doc(db, 'users', userItem.id), {
                               'visibilitySettings.showName': v
                             });
+                            invalidateFirestoreCache('admin:users');
+                            await fetchUsers();
                           }}
                         />
                         <VisibilityToggle
@@ -363,6 +372,8 @@ export function AdminPanel() {
                             await updateDoc(doc(db, 'users', userItem.id), {
                               'visibilitySettings.showEmail': v
                             });
+                            invalidateFirestoreCache('admin:users');
+                            await fetchUsers();
                           }}
                         />
                         <VisibilityToggle
@@ -373,6 +384,8 @@ export function AdminPanel() {
                             await updateDoc(doc(db, 'users', userItem.id), {
                               'visibilitySettings.showDepartment': v
                             });
+                            invalidateFirestoreCache('admin:users');
+                            await fetchUsers();
                           }}
                         />
                         <VisibilityToggle
@@ -383,6 +396,8 @@ export function AdminPanel() {
                             await updateDoc(doc(db, 'users', userItem.id), {
                               'visibilitySettings.showProfile': v
                             });
+                            invalidateFirestoreCache('admin:users');
+                            await fetchUsers();
                           }}
                         />
                       </div>
@@ -411,18 +426,18 @@ function PermissionToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <div 
+    <div
       className="p-4 rounded-xl cursor-pointer transition-all"
-      style={{ 
+      style={{
         background: checked ? 'rgba(34, 197, 94, 0.1)' : 'var(--bg-card)',
         border: `1px solid ${checked ? 'rgba(34, 197, 94, 0.3)' : 'var(--border-subtle)'}`
       }}
       onClick={() => onChange(!checked)}
     >
       <div className="flex items-start gap-3">
-        <div 
+        <div
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ 
+          style={{
             background: checked ? 'rgba(34, 197, 94, 0.2)' : 'var(--bg-input)'
           }}
         >
@@ -470,18 +485,18 @@ function VisibilityToggle({
   };
 
   return (
-    <div 
+    <div
       className="p-4 rounded-xl cursor-pointer transition-all"
-      style={{ 
+      style={{
         background: checked ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-card)',
         border: `1px solid ${checked ? 'rgba(59, 130, 246, 0.3)' : 'var(--border-subtle)'}`
       }}
       onClick={handleClick}
     >
       <div className="flex items-start gap-3">
-        <div 
+        <div
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ 
+          style={{
             background: checked ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-input)'
           }}
         >

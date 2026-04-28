@@ -6,6 +6,7 @@ import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { safeAddDoc } from '../lib/firestoreHelpers';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
 import { Calendar, Clock, MapPin, Tag, FileText, Bell, Repeat, Timer, Scale, Lock, AlertTriangle, ArrowLeft, Check, ChevronDown } from 'lucide-react';
 import { isBoss, isDiretoria, canCreateOnBlockedDays } from '../lib/permissions';
@@ -74,7 +75,7 @@ function generateRecurringDates(startDate: string, type: string, count: number):
   const dates: string[] = [];
   const baseDate = parseLocalDate(startDate);
   if (!baseDate) return dates;
-  
+
   for (let i = 0; i < count; i++) {
     const d = new Date(baseDate);
     if (type === 'daily') d.setDate(baseDate.getDate() + i);
@@ -124,6 +125,7 @@ export function CreateEvent() {
 
   const isRecurring = watch('isRecurring');
   const recurrenceType = watch('recurrenceType');
+  const recurrenceCount = watch('recurrenceCount');
   const category = watch('category');
   const selectedDate = watch('date');
   const selectedEndDate = watch('endDate');
@@ -145,7 +147,7 @@ export function CreateEvent() {
   // Aplicar dados do comando de voz ao formulário
   const applyVoiceData = useCallback((text: string) => {
     const parsed = parseVoiceCommand(text);
-    
+
     if (parsed.title) setValue('title', parsed.title);
     if (parsed.date) setValue('date', parsed.date);
     if (parsed.time) setValue('time', parsed.time);
@@ -153,7 +155,7 @@ export function CreateEvent() {
     if (parsed.category) setValue('category', parsed.category as any);
     if (parsed.priority) setValue('priority', parsed.priority as any);
     if (parsed.description) setValue('description', parsed.description);
-    
+
     setVoiceApplied(true);
     setTimeout(() => setVoiceApplied(false), 3000);
   }, [setValue]);
@@ -166,38 +168,59 @@ export function CreateEvent() {
   }, [transcript, isListening, voiceApplied, applyVoiceData]);
 
   useEffect(() => {
-    const checkBlockedDays = async () => {
-      if (!user) return;
-      const datesToCheck: string[] = [selectedDate];
-      
-      if (selectedEndDate) {
-        const dates = generateDatesUntilEndDate(selectedDate, selectedEndDate);
-        datesToCheck.push(...dates);
-      }
-      
-      if (isRecurring && recurrenceType && recurrenceType !== 'none') {
-        const count = watch('recurrenceCount') || 4;
-        const dates = generateRecurringDates(selectedDate, recurrenceType, count);
-        datesToCheck.push(...dates);
-      }
-      
-      const blockedDates: string[] = [];
-      for (const date of datesToCheck) {
-        if (!date) continue;
-        const q = query(collection(db, 'events'), where('date', '==', date), where('isPersonal', '==', true));
-        const snapshot = await getDocs(q);
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.createdBy !== user.uid && !isBoss(user.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user)) {
-            if (!blockedDates.includes(date)) blockedDates.push(date);
+    // Otimização: Debounce na verificação para economizar cota de leitura do Firestore
+    const timer = setTimeout(() => {
+      const checkBlockedDays = async () => {
+        if (!user || !selectedDate) return;
+
+        // OTIMIZAÇÃO: Se o usuário já tem permissão para ignorar dias bloqueados, 
+        // não fazemos a consulta ao banco para economizar cota de leitura.
+        if (isBoss(user.email) || isDiretoria(user) || canCreateOnBlockedDays(user)) {
+          setBlockedDaysWarning([]);
+          return;
+        }
+
+        const datesToCheck: string[] = [selectedDate];
+
+        if (selectedEndDate) {
+          const dates = generateDatesUntilEndDate(selectedDate, selectedEndDate);
+          datesToCheck.push(...dates);
+        }
+
+        if (isRecurring && recurrenceType && recurrenceType !== 'none') {
+          const count = recurrenceCount || 4;
+          const dates = generateRecurringDates(selectedDate, recurrenceType, count);
+          datesToCheck.push(...dates);
+        }
+
+        const blockedDates: string[] = [];
+        const uniqueDatesToCheck = Array.from(new Set(datesToCheck.filter(Boolean)));
+
+        const batchSize = 10;
+        for (let i = 0; i < uniqueDatesToCheck.length; i += batchSize) {
+          const batchDates = uniqueDatesToCheck.slice(i, i + batchSize);
+          if (batchDates.length === 0) continue;
+
+          const q = query(collection(db, 'events'), where('date', 'in', batchDates), where('isPersonal', '==', true));
+          const snapshot = await getDocs(q);
+
+          for (const doc of snapshot.docs) {
+            const data = doc.data();
+            if (data.createdBy !== user.uid && !isBoss(user.email) && !isDiretoria(user) && !canCreateOnBlockedDays(user)) {
+              if (data.date && !blockedDates.includes(data.date)) {
+                blockedDates.push(data.date);
+              }
+            }
           }
-        });
-      }
-      setBlockedDaysWarning(blockedDates);
-    };
-    
-    if (selectedDate) checkBlockedDays();
-  }, [selectedDate, selectedEndDate, isRecurring, recurrenceType, user]);
+        }
+        setBlockedDaysWarning(blockedDates);
+      };
+
+      checkBlockedDays();
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [selectedDate, selectedEndDate, isRecurring, recurrenceType, recurrenceCount, user]);
 
   const onSubmit = async (data: EventFormData) => {
     if (!user) return;
@@ -231,6 +254,7 @@ export function CreateEvent() {
         recurrenceType: data.recurrenceType || 'none',
         createdBy: user.uid,
         creatorName: user.name,
+        creatorRole: user.role,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         seriesUpdateAll: true,
@@ -256,38 +280,36 @@ export function CreateEvent() {
       const isReallyRecurring = data.isRecurring && data.recurrenceType && data.recurrenceType !== 'none';
       const hasEnd = Boolean(data.endDate && data.endDate !== data.date);
       const seriesId = `series_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+      let docsCreatedCount = 0;
+
       if (isReallyRecurring) {
         const count = data.recurrenceCount || 4;
         const dates = generateRecurringDates(data.date, data.recurrenceType!, count);
         for (const dateStr of dates) {
           const evData = { ...eventData, date: dateStr, seriesId };
-          const docRef = await addDoc(collection(db, 'events'), evData);
-          await addDoc(collection(db, 'activity_logs'), {
-            eventId: docRef.id, userId: user.uid, action: 'event_created',
-            timestamp: new Date().toISOString(),
-            details: `Evento recorrente "${data.title}" criado para ${dateStr}.`,
-          });
+          await safeAddDoc(collection(db, 'events'), evData);
+          docsCreatedCount++;
         }
       } else if (hasEnd) {
         const dates = generateDatesUntilEndDate(data.date, data.endDate!);
         for (const dateStr of dates) {
           const evData = { ...eventData, date: dateStr, seriesId };
-          const docRef = await addDoc(collection(db, 'events'), evData);
-          await addDoc(collection(db, 'activity_logs'), {
-            eventId: docRef.id, userId: user.uid, action: 'event_created',
-            timestamp: new Date().toISOString(),
-            details: `Evento "${data.title}" criado para ${dateStr}.`,
-          });
+          await safeAddDoc(collection(db, 'events'), evData);
+          docsCreatedCount++;
         }
       } else {
-        const docRef = await addDoc(collection(db, 'events'), eventData);
-        await addDoc(collection(db, 'activity_logs'), {
-          eventId: docRef.id, userId: user.uid, action: 'event_created',
-          timestamp: new Date().toISOString(),
-          details: `Evento "${data.title}" criado.`,
-        });
+        const docRef = await safeAddDoc(collection(db, 'events'), eventData);
+        if (docRef) docsCreatedCount = 1;
       }
+
+      // OTIMIZAÇÃO: Registra apenas UM log para a operação inteira, reduzindo drasticamente as escritas
+      await safeAddDoc(collection(db, 'activity_logs'), {
+        eventId: seriesId,
+        userId: user.uid,
+        action: 'event_created',
+        timestamp: new Date().toISOString(),
+        details: `Criação de ${docsCreatedCount} evento(s) "${data.title}".`,
+      });
 
       navigate('/');
     } catch (error) {
@@ -352,11 +374,11 @@ export function CreateEvent() {
             {/* Título - Large touch target */}
             <div className="form-group">
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Título *</label>
-              <input 
-                type="text" 
-                {...register('title')} 
-                className="dark-input text-base py-4" 
-                placeholder="Ex: Reunião com diretoria" 
+              <input
+                type="text"
+                {...register('title')}
+                className="dark-input text-base py-4"
+                placeholder="Ex: Reunião com diretoria"
               />
               {errors.title && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.title.message}</p>}
             </div>
@@ -384,11 +406,11 @@ export function CreateEvent() {
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                 <MapPin className="w-4 h-4 inline mr-1" />Local *
               </label>
-              <input 
-                type="text" 
-                {...register('location')} 
-                className="dark-input text-base py-4" 
-                placeholder="Endereço ou nome do local" 
+              <input
+                type="text"
+                {...register('location')}
+                className="dark-input text-base py-4"
+                placeholder="Endereço ou nome do local"
               />
               {errors.location && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errors.location.message}</p>}
             </div>
@@ -440,7 +462,7 @@ export function CreateEvent() {
             </div>
 
             {/* Expandable Sections */}
-            
+
             {/* Data de término do evento */}
             <div className="rounded-xl" style={{ background: 'var(--bg-input)' }}>
               <button

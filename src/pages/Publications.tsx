@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { addDoc, collection, deleteDoc, doc, orderBy, query, updateDoc, limit } from 'firebase/firestore';
 import {
   AlertTriangle,
   Calendar,
@@ -28,6 +28,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { db } from '../lib/firebase';
+import { getCachedDocs, invalidateFirestoreCache } from '../lib/firestoreCache';
 import { useAuth } from '../contexts/AuthContext';
 import { canApprovePublications } from '../lib/permissions';
 import { PublicationApproval, PublicationChannel, PublicationMedia, PublicationMediaType, PublicationStatus, Priority } from '../types';
@@ -243,23 +244,24 @@ export function Publications() {
 
   const canApprove = canApprovePublications(user);
 
-  useEffect(() => {
-    const q = query(collection(db, 'publications'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        setPublications(snapshot.docs.map((item) => normalizePublication(item.id, item.data() as Partial<PublicationApproval>)));
-        setPermissionError(null);
-        setLoading(false);
-      },
-      (error) => {
-        setLoading(false);
-        console.error('Erro ao carregar publicações:', error);
-        setPermissionError('Não foi possível carregar as publicações. Verifique se as regras do Firestore já foram publicadas.');
-      }
-    );
+  const fetchPublications = useCallback(async () => {
+    setLoading(true);
+    // OTIMIZAÇÃO: Adicionado limite de 50 documentos para reduzir consumo de leitura
+    const q = query(collection(db, 'publications'), orderBy('createdAt', 'desc'), limit(50));
+    try {
+      const docs = await getCachedDocs<Partial<PublicationApproval>>('publications:latest', q, 2 * 60 * 1000);
+      setPublications(docs.map((item) => normalizePublication(item.id, item.data)));
+      setPermissionError(null);
+    } catch (error) {
+      console.error('Erro ao carregar publicações:', error);
+      setPermissionError('Não foi possível carregar as publicações.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchPublications();
   }, []);
 
   const counts = useMemo(() => {
@@ -449,7 +451,9 @@ export function Publications() {
       } else {
         await addDoc(collection(db, 'publications'), { ...payload, createdBy: user.uid, creatorName: user.name, createdAt: now });
       }
+      invalidateFirestoreCache('publications');
       resetForm();
+      await fetchPublications();
     } catch (error) {
       console.error('Erro ao criar publicação:', error);
       alert(error instanceof Error ? error.message : 'Não foi possível salvar a publicação. Verifique as permissões do Firestore e tente novamente.');
@@ -524,6 +528,8 @@ export function Publications() {
         ...cleanForFirestore(updates),
         updatedAt: new Date().toISOString(),
       });
+      invalidateFirestoreCache('publications');
+      await fetchPublications();
       return true;
     } catch (error) {
       console.error('Erro ao atualizar publicação:', error);
@@ -541,6 +547,8 @@ export function Publications() {
     setActionLoadingId(publication.id);
     try {
       await deleteDoc(doc(db, 'publications', publication.id));
+      invalidateFirestoreCache('publications');
+      await fetchPublications();
     } catch (error) {
       console.error('Erro ao excluir publicação:', error);
       alert('Não foi possível excluir a publicação. Verifique as permissões e tente novamente.');
@@ -1106,151 +1114,151 @@ function PublicationCard({
       </div>
 
       <div className="hidden sm:block dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
-      <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
-        {/* Capa Compacta */}
-        <div className="w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
-          {publication.media && publication.media[0] ? (
-            <img
-              src={getMediaDisplayUrl(publication.media[0])}
-              className="w-full h-full object-cover"
-              alt={publication.title}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-              <ImageIcon className="w-8 h-8 opacity-20" />
-            </div>
-          )}
-          <div className="hidden sm:block absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
-            CAPA
-          </div>
-        </div>
-
-        {/* Conteúdo Principal */}
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-            <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}>
-              <StatusIcon className="w-3.5 h-3.5" />
-              {status.label}
-            </span>
-            <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: 'var(--bg-input)', color: channel.color }}>
-              <ChannelIcon className="w-3.5 h-3.5" />
-              {channel.label}
-            </span>
-            <span className="hidden sm:inline-flex px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
-              {priority.label}
-            </span>
-          </div>
-
-          <h2 className="text-sm sm:text-base font-black leading-tight line-clamp-2 sm:truncate" style={{ color: 'var(--text-primary)' }}>
-            {publication.title}
-          </h2>
-
-          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5 mb-2 sm:mb-4 text-[10px] sm:text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
-            <span className="hidden sm:flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
-          </div>
-
-          {/* Alerta de Notificação para o Criador (quando reprovado) */}
-          {isOwner && publication.status === 'reprovado' && (
-            <div className="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3 animate-pulse">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
-              <div>
-                <p className="text-xs font-bold text-orange-500">Ação necessária!</p>
-                <p className="text-[10px] text-orange-600/80">O revisor solicitou alterações para você.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Grid de Informações Estratégicas */}
-          <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            {publication.objective && (
-              <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
-                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
-                <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.objective}</p>
+        <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
+          {/* Capa Compacta */}
+          <div className="w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
+            {publication.media && publication.media[0] ? (
+              <img
+                src={getMediaDisplayUrl(publication.media[0])}
+                className="w-full h-full object-cover"
+                alt={publication.title}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                <ImageIcon className="w-8 h-8 opacity-20" />
               </div>
             )}
-            {publication.targetAudience && (
-              <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
-                <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público-Alvo</p>
-                <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.targetAudience}</p>
+            <div className="hidden sm:block absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
+              CAPA
+            </div>
+          </div>
+
+          {/* Conteúdo Principal */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}>
+                <StatusIcon className="w-3.5 h-3.5" />
+                {status.label}
+              </span>
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: 'var(--bg-input)', color: channel.color }}>
+                <ChannelIcon className="w-3.5 h-3.5" />
+                {channel.label}
+              </span>
+              <span className="hidden sm:inline-flex px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
+                {priority.label}
+              </span>
+            </div>
+
+            <h2 className="text-sm sm:text-base font-black leading-tight line-clamp-2 sm:truncate" style={{ color: 'var(--text-primary)' }}>
+              {publication.title}
+            </h2>
+
+            <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5 mb-2 sm:mb-4 text-[10px] sm:text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
+              <span className="hidden sm:flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
+            </div>
+
+            {/* Alerta de Notificação para o Criador (quando reprovado) */}
+            {isOwner && publication.status === 'reprovado' && (
+              <div className="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3 animate-pulse">
+                <AlertTriangle className="w-5 h-5 text-orange-500" />
+                <div>
+                  <p className="text-xs font-bold text-orange-500">Ação necessária!</p>
+                  <p className="text-[10px] text-orange-600/80">O revisor solicitou alterações para você.</p>
+                </div>
               </div>
             )}
-          </div>
 
-          {/* Conteúdo/Legenda da Publicação */}
-          <div className="hidden sm:block mb-4">
-            <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">Texto da Legenda / Conteúdo:</p>
-            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-              <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
-                {publication.content}
-              </p>
+            {/* Grid de Informações Estratégicas */}
+            <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {publication.objective && (
+                <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
+                  <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.objective}</p>
+                </div>
+              )}
+              {publication.targetAudience && (
+                <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público-Alvo</p>
+                  <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.targetAudience}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Conteúdo/Legenda da Publicação */}
+            <div className="hidden sm:block mb-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">Texto da Legenda / Conteúdo:</p>
+              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
+                  {publication.content}
+                </p>
+              </div>
+            </div>
+
+            {/* Feedback de Alterações (Comentários do Revisor) */}
+            {(publication.notes || publication.rejectionReason) && (
+              <div className="p-3 rounded-xl mb-4 text-xs border border-dashed" style={{ background: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.3)' }}>
+                <p className="font-bold uppercase tracking-tighter text-[9px] mb-1.5 flex items-center gap-1" style={{ color: '#f59e0b' }}>
+                  <MessageCircle className="w-3 h-3" /> Comentários do Revisor:
+                </p>
+                <p className="text-[var(--text-secondary)] leading-normal italic">
+                  {publication.rejectionReason || publication.notes}
+                </p>
+              </div>
+            )}
+
+            <div className="hidden sm:flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
+              {publication.publicationUrl && (
+                <a
+                  href={publication.publicationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)] hover:brightness-110 active:scale-95"
+                >
+                  <Globe2 className="w-3.5 h-3.5" />
+                  Ver Publicado
+                </a>
+              )}
             </div>
           </div>
 
-          {/* Feedback de Alterações (Comentários do Revisor) */}
-          {(publication.notes || publication.rejectionReason) && (
-            <div className="p-3 rounded-xl mb-4 text-xs border border-dashed" style={{ background: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.3)' }}>
-              <p className="font-bold uppercase tracking-tighter text-[9px] mb-1.5 flex items-center gap-1" style={{ color: '#f59e0b' }}>
-                <MessageCircle className="w-3 h-3" /> Comentários do Revisor:
-              </p>
-              <p className="text-[var(--text-secondary)] leading-normal italic">
-                {publication.rejectionReason || publication.notes}
-              </p>
-            </div>
-          )}
-
-          <div className="hidden sm:flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
-            {publication.publicationUrl && (
+          {/* Ações Compactas */}
+          <div className="grid grid-cols-2 sm:flex lg:flex-col justify-start lg:justify-end gap-2.5 sm:gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-3 lg:pt-0 lg:pl-5 shrink-0 basis-full lg:basis-auto w-full lg:w-48">
+            {publication.driveUrl && (
               <a
-                href={publication.publicationUrl}
+                href={publication.driveUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)] hover:brightness-110 active:scale-95"
+                className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 min-h-[46px] w-full sm:w-auto lg:w-full"
               >
-                <Globe2 className="w-3.5 h-3.5" />
-                Ver Publicado
+                <ExternalLink className="w-4 h-4" />
+                Ver Slides
               </a>
             )}
+
+            {canEditCard && publication.status !== 'enviado' && (
+              <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
+            )}
+
+            {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
+              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
+            )}
+            {publication.status === 'em_revisao' && canApprove && (
+              <>
+                <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
+                <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
+              </>
+            )}
+            {publication.status === 'aprovado' && canApprove && (
+              <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
+            )}
+            {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
+              <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
+            )}
+            {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
           </div>
         </div>
-
-        {/* Ações Compactas */}
-        <div className="grid grid-cols-2 sm:flex lg:flex-col justify-start lg:justify-end gap-2.5 sm:gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-3 lg:pt-0 lg:pl-5 shrink-0 basis-full lg:basis-auto w-full lg:w-48">
-          {publication.driveUrl && (
-            <a
-              href={publication.driveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 min-h-[46px] w-full sm:w-auto lg:w-full"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Ver Slides
-            </a>
-          )}
-
-          {canEditCard && publication.status !== 'enviado' && (
-            <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
-          )}
-
-          {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
-            <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
-          )}
-          {publication.status === 'em_revisao' && canApprove && (
-            <>
-              <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
-              <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
-            </>
-          )}
-          {publication.status === 'aprovado' && canApprove && (
-            <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
-          )}
-          {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
-            <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
-          )}
-          {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
-        </div>
       </div>
-    </div>
     </>
   );
 }

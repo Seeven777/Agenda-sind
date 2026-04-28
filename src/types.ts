@@ -67,6 +67,7 @@ export interface Event {
   cnpj?: string;
   createdBy: string;
   creatorName: string;
+  creatorRole?: Role;
   notify24h?: boolean;
   notify1h?: boolean;
   tags?: string[];

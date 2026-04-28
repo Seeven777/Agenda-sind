@@ -101,7 +101,7 @@ export function useNotifications(): UseNotificationsReturn {
       setIsLoading(true);
       setError(null);
 
-      const fcmToken = await saveFCMToken(user.uid);
+      const fcmToken = await saveFCMToken(user.uid, { force: true });
       
       if (fcmToken) {
         setToken(fcmToken);

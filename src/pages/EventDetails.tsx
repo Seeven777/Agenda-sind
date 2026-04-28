@@ -6,6 +6,7 @@ import { Event } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Calendar, Clock, MapPin, User, Tag, FileText, Building2, Trash2, CheckCircle, AlertTriangle, ExternalLink, ArrowLeft, MessageCircle, Printer, Scale, Phone, Lock } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { invalidateFirestoreCache } from '../lib/firestoreCache';
 import { isBoss, isDiretoria, canSeePersonalEvents, canUserEditEvent, canUserDeleteEvent } from '../lib/permissions';
 
 export function EventDetails() {
@@ -83,6 +84,7 @@ export function EventDetails() {
         });
       }
       
+      invalidateFirestoreCache();
       navigate('/', { replace: true });
     } catch (error) {
       console.error("Erro ao excluir:", error);
@@ -95,6 +97,7 @@ export function EventDetails() {
     if (!event || !id) return;
     try {
       await updateDoc(doc(db, 'events', id), { status: 'concluido', updatedAt: new Date().toISOString() });
+      invalidateFirestoreCache();
       setEvent({ ...event, status: 'concluido' });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `events/${id}`);

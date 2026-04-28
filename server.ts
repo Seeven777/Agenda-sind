@@ -34,6 +34,8 @@ try {
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
+  const notificationSchedulerEnabled = process.env.ENABLE_NOTIFICATION_SCHEDULER === 'true';
+  const notificationCron = process.env.NOTIFICATION_CRON || '*/15 * * * *';
 
   app.use(express.json());
 
@@ -51,17 +53,20 @@ async function startServer() {
     if (!db) return [];
 
     const now = new Date();
-    // Define uma janela de 10 minutos para garantir que o cron pegue o evento
-    const startWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000) - 5 * 60 * 1000);
-    const endWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000) + 5 * 60 * 1000);
+    // Define uma janela de 5 minutos para corresponder Ã  frequÃªncia do cron (evita notificaÃ§Ãµes duplicadas e leituras extras)
+    const startWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000));
+    const endWindow = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000) + 4 * 60 * 1000 + 59 * 1000);
 
     const notifyField = hoursBefore === 24 ? 'notify24h' : 'notify1h';
+    const targetDate = new Date(now.getTime() + (hoursBefore * 60 * 60 * 1000));
+    const targetDateStr = targetDate.toISOString().split('T')[0];
 
     try {
       const eventsRef = db.collection('events');
       const snapshot = await eventsRef
         .where('status', '==', 'agendado')
         .where(notifyField, '==', true)
+        .where('date', '==', targetDateStr)
         .get();
 
       const events: any[] = [];
@@ -171,30 +176,56 @@ async function startServer() {
     }
   }
 
+  // Endpoint para inscrever o usuario em topicos de notificacao.
+  // Fica fora do scheduler para continuar funcionando mesmo com os cron jobs desligados.
+  app.post('/api/notifications/subscribe', async (req, res) => {
+    const { fcmToken, topic = 'institutional_alerts' } = req.body;
+    if (!messaging || !fcmToken) {
+      return res.status(400).json({ success: false, error: 'Messaging not available or token missing' });
+    }
+
+    try {
+      const response = await messaging.subscribeToTopic(fcmToken, topic);
+      console.log(`[FCM] User subscribed to ${topic}:`, response);
+      res.json({ success: true, response });
+    } catch (error) {
+      console.error('[FCM] Error subscribing to topic:', error);
+      res.status(500).json({ success: false, error: 'Failed to subscribe' });
+    }
+  });
+
+  if (notificationSchedulerEnabled) {
   // Scheduler for 24-hour notifications
-  cron.schedule('*/5 * * * *', async () => {
+  cron.schedule(notificationCron, async () => { // Frequencia configuravel para controlar a cota
     console.log('[Scheduler] Checking for 24h notifications...');
 
     try {
-      const events = await getEventsNeedingNotification(24);
+      const events = await getEventsNeedingNotification(24); // Isso lÃª os eventos
+
+      if (events.length === 0) {
+        console.log('[Scheduler] Nenhum evento de 24h encontrado.');
+        return;
+      }
 
       for (const event of events) {
         try {
-          const success = await sendPushNotification(
-            event.fcmToken || null,
-            event.createdBy,
-            {
-              title: `⏰ Lembrete: ${event.title}`,
-              body: `O evento acontece em 24 horas!\nData: ${event.date} às ${event.time}\nLocal: ${event.location}`
+          // OTIMIZAÃ‡ÃƒO: Notifica o criador via tÃ³pico individual ou token salvo no evento
+          // Para economizar leitura na coleÃ§Ã£o 'users', enviamos para o tÃ³pico do criador
+          const message = {
+            topic: `user_${event.createdBy}`,
+            notification: {
+              title: `â° Lembrete: ${event.title}`,
+              body: `O evento acontece em 24 horas!\nData: ${event.date} Ã s ${event.time}\nLocal: ${event.location}`
             },
-            {
+            data: {
               eventId: event.id,
-              type: 'event_reminder_24h',
+              notificationType: 'event_reminder_24h', // Mudando type para evitar conflitos de palavras reservadas
               url: `/events/${event.id}`
             }
-          );
+          };
 
-          await logNotification(event.id, event.createdBy, '24h', success);
+          await messaging.send(message);
+          await logNotification(event.id, event.createdBy, '24h', true);
         } catch (error) {
           console.error(`[Scheduler] Error sending 24h notification for event ${event.id}:`, error);
           await logNotification(event.id, event.createdBy, '24h', false);
@@ -209,23 +240,28 @@ async function startServer() {
     }
   });
 
-  // Scheduler for 5-minute notifications (notify ALL users)
-  cron.schedule('*/1 * * * *', async () => {
-    console.log('[Scheduler] Checking for 5min notifications...');
+  // Scheduler for upcoming notifications (notify ALL users)
+  cron.schedule(notificationCron, async () => { // Frequencia configuravel para controlar a cota
+    console.log('[Scheduler] Checking for events starting soon...');
 
     if (!db) {
-      console.log('[Scheduler] Firebase Admin not available. Skipping 5min notifications.');
       return;
     }
 
     try {
       const now = new Date();
-      const startWindow = new Date(now.getTime() + 4 * 60 * 1000); // 4 minutes from now
-      const endWindow = new Date(now.getTime() + 6 * 60 * 1000);   // 6 minutes from now
+      const startWindow = new Date(now.getTime());
+      const endWindow = new Date(now.getTime() + 15 * 60 * 1000); // Janela de 15 min sincronizada com o cron
 
-      // Adicionado filtro de status para reduzir leituras desnecessárias
+      const todayStr = now.toISOString().split('T')[0];
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
       const eventsSnapshot = await db.collection('events')
         .where('status', '==', 'agendado')
+        .where('date', '==', todayStr) // Foca apenas no dia de hoje para o lembrete de 5min
+        // Opcional: Adicionar um campo 'notified5m: false' no futuro para filtrar apenas os nÃ£o enviados
+        .limit(100) // Evita ler milhares de docs de uma vez
         .get();
 
       const events = [];
@@ -253,67 +289,45 @@ async function startServer() {
       });
 
       if (events.length === 0) {
+        console.log('[Scheduler] No events found in the current 15min window.');
         return; // No events to notify about
       }
 
       console.log(`[Scheduler] Found ${events.length} events for 5min notifications`);
 
-      // Get ALL users with FCM tokens
-      const usersSnapshot = await db.collection('users')
-        .where('fcmToken', '!=', null)
-        .get();
-
-      const usersWithTokens = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...(doc.data() as any)
-      }));
-
-      console.log(`[Scheduler] Notifying ${usersWithTokens.length} users about ${events.length} events`);
-
-      // Send notifications to ALL users for EACH event
-      for (const event of events) {
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const user of usersWithTokens) {
+      if (messaging) {
+        // OTIMIZAÃ‡ÃƒO MÃXIMA: Envia para o tÃ³pico em vez de ler cada usuÃ¡rio no banco
+        for (const event of events) {
           try {
-            const success = await sendPushNotification(
-              user.fcmToken,
-              user.id,
-              {
-                title: `🚨 Evento em 5 minutos: ${event.title}`,
-                body: `O evento começa em 5 minutos!\nData: ${event.date} às ${event.time}\nLocal: ${event.location}\nCriado por: ${event.creatorName}`
+            const message = {
+              topic: 'institutional_alerts',
+              notification: {
+                title: `ðŸš¨ Evento em 5 minutos: ${event.title}`,
+                body: `O evento comeÃ§a em 5 minutos!\nLocal: ${event.location}`
               },
-              {
+              data: {
                 eventId: event.id,
-                type: 'event_reminder_5min',
+                notificationType: 'event_reminder_5min',
                 url: `/events/${event.id}`
               }
-            );
+            };
 
-            if (success) {
-              successCount++;
-            } else {
-              failCount++;
-            }
-
-            // Log notification for each user
-            await logNotification(event.id, user.id, '5min', success);
-
+            const response = await messaging.send(message);
+            console.log(`[Scheduler] Topic notification sent for event ${event.id}:`, response);
+            await logNotification(event.id, 'topic_broadcast', '5min', true);
           } catch (error) {
-            console.error(`[Scheduler] Error notifying user ${user.id} about event ${event.id}:`, error);
-            failCount++;
-            await logNotification(event.id, user.id, '5min', false);
+            console.error(`[Scheduler] Error sending topic notification for event ${event.id}:`, error);
+            await logNotification(event.id, 'topic_broadcast', '5min', false);
           }
         }
-
-        console.log(`[Scheduler] Event ${event.id}: ${successCount} successful, ${failCount} failed notifications`);
       }
-
     } catch (error) {
       console.error('[Scheduler] Error processing 5min notifications:', error);
     }
   });
+  } else {
+    console.log('[Scheduler] Notification scheduler disabled. Set ENABLE_NOTIFICATION_SCHEDULER=true to enable it.');
+  }
 
   // API endpoint to manually trigger notification check
   app.post('/api/notifications/check', async (req, res) => {
@@ -346,8 +360,8 @@ async function startServer() {
         fcmToken,
         'test',
         {
-          title: '🔔 Teste de Notificação',
-          body: 'As notificações estão funcionando corretamente!'
+          title: 'ðŸ”” Teste de NotificaÃ§Ã£o',
+          body: 'As notificaÃ§Ãµes estÃ£o funcionando corretamente!'
         },
         {
           type: 'test',

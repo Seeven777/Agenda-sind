@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import React, { useEffect, useState, useCallback } from 'react';
+import { collection, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Event } from '../types';
 import { EventCard } from '../components/EventCard';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { getCachedDocs } from '../lib/firestoreCache';
 import { isDiretoria } from '../lib/permissions';
 import { Plus, Calendar as CalendarIcon, Lock, Crown } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -23,64 +24,45 @@ export function PrivateDashboard() {
     return `${year}-${month}-${day}`;
   };
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
 
-    const todayStr = getDateString(new Date());
+    setLoading(true);
+    try {
+      const todayStr = getDateString(new Date());
 
-    // Eventos pessoais do patrão
-    const personalQuery = query(
-      collection(db, 'events'),
-      where('isPersonal', '==', true),
-      where('status', '==', 'agendado'),
-      orderBy('date', 'asc')
-    );
+      const personalQuery = query(
+        collection(db, 'events'),
+        where('isPersonal', '==', true),
+        where('status', '==', 'agendado'),
+        orderBy('date', 'asc')
+      );
 
-    // Eventos de hoje
-    const todayPersonalQuery = query(
-      collection(db, 'events'),
-      where('isPersonal', '==', true),
-      where('date', '==', todayStr),
-      orderBy('time', 'asc')
-    );
+      const docs = await getCachedDocs<Event>('private-dashboard:events:personal', personalQuery, 2 * 60 * 1000);
+      const personalEvents = docs.map(d => ({ id: d.id, ...d.data } as Event));
 
-    // Próximos eventos
-    const upcomingPersonalQuery = query(
-      collection(db, 'events'),
-      where('isPersonal', '==', true),
-      where('date', '>', todayStr),
-      orderBy('date', 'asc'),
-      orderBy('time', 'asc'),
-      limit(10)
-    );
-    const onEventsError = (error: unknown) => {
+      setAllPersonalEvents(personalEvents);
+      setTodayEvents(personalEvents.filter(e => e.date === todayStr).sort((a, b) => a.time.localeCompare(b.time)));
+      setUpcomingEvents(personalEvents
+        .filter(e => e.date > todayStr)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+        .slice(0, 10));
+    } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'events');
+    } finally {
       setLoading(false);
-    };
-
-    const u1 = onSnapshot(personalQuery, 
-      (s) => { setAllPersonalEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))); setLoading(false); },
-      onEventsError
-    );
-
-    const u2 = onSnapshot(todayPersonalQuery, 
-      (s) => setTodayEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))),
-      onEventsError
-    );
-
-    const u3 = onSnapshot(upcomingPersonalQuery, 
-      (s) => setUpcomingEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))),
-      onEventsError
-    );
-
-    return () => { u1(); u2(); u3(); };
+    }
   }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin" 
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
       </div>
     );
   }
@@ -90,8 +72,8 @@ export function PrivateDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center" 
-               style={{ background: 'linear-gradient(135deg, var(--accent), #ff9a0d)' }}>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, var(--accent), #ff9a0d)' }}>
             <Crown className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -107,8 +89,8 @@ export function PrivateDashboard() {
 
       {/* Info Card */}
       <div className="dark-card p-4 flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" 
-             style={{ background: 'rgba(255, 111, 15, 0.15)' }}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(255, 111, 15, 0.15)' }}>
           <Lock className="w-5 h-5" style={{ color: 'var(--accent)' }} />
         </div>
         <div>
@@ -154,14 +136,14 @@ export function PrivateDashboard() {
 
       {/* Today's Events */}
       <div className="dark-card overflow-hidden">
-        <div className="px-5 py-4 flex items-center gap-2" 
-             style={{ borderBottom: '1px solid var(--border-subtle)', background: 'rgba(255, 111, 15, 0.08)' }}>
+        <div className="px-5 py-4 flex items-center gap-2"
+          style={{ borderBottom: '1px solid var(--border-subtle)', background: 'rgba(255, 111, 15, 0.08)' }}>
           <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
           <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
             Eventos de Hoje
           </h2>
-          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" 
-                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold"
+            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
             {todayEvents.length}
           </span>
         </div>
@@ -173,7 +155,7 @@ export function PrivateDashboard() {
                 Nenhum evento pessoal para hoje.
               </p>
               <Link to="/events/create" className="mt-3 inline-flex items-center gap-2 text-sm font-medium"
-                    style={{ color: 'var(--accent)' }}>
+                style={{ color: 'var(--accent)' }}>
                 <Plus className="w-4 h-4" />
                 Criar evento pessoal
               </Link>
@@ -186,14 +168,14 @@ export function PrivateDashboard() {
 
       {/* Upcoming Events */}
       <div className="dark-card overflow-hidden">
-        <div className="px-5 py-4 flex items-center gap-2" 
-             style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+        <div className="px-5 py-4 flex items-center gap-2"
+          style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="w-2 h-2 rounded-full" style={{ background: '#3b82f6' }} />
           <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
             Próximos Eventos Pessoais
           </h2>
-          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" 
-                style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6' }}>
+          <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold"
+            style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6' }}>
             {upcomingEvents.length}
           </span>
         </div>
@@ -214,14 +196,14 @@ export function PrivateDashboard() {
       {/* All Personal Events */}
       {allPersonalEvents.length > 0 && (
         <div className="dark-card overflow-hidden">
-          <div className="px-5 py-4 flex items-center gap-2" 
-               style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="px-5 py-4 flex items-center gap-2"
+            style={{ borderBottom: '1px solid var(--border-subtle)' }}>
             <div className="w-2 h-2 rounded-full" style={{ background: '#a855f7' }} />
             <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
               Todos os Eventos Pessoais
             </h2>
-            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold" 
-                  style={{ background: 'rgba(168, 85, 247, 0.12)', color: '#a855f7' }}>
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold"
+              style={{ background: 'rgba(168, 85, 247, 0.12)', color: '#a855f7' }}>
               {allPersonalEvents.length}
             </span>
           </div>

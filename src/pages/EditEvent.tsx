@@ -7,6 +7,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { handleFirestoreError, OperationType } from '../lib/errorHandler';
+import { invalidateFirestoreCache } from '../lib/firestoreCache';
 import { Calendar, Clock, MapPin, Tag, FileText, Briefcase, Bell, Palette, ArrowLeft, Scale, User, Phone, MapPinIcon } from 'lucide-react';
 import { canUserEditEvent } from '../lib/permissions';
 
@@ -190,6 +191,7 @@ export function EditEvent() {
         });
       }
 
+      invalidateFirestoreCache();
       navigate(`/events/${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'events');

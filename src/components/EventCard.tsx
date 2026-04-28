@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Clock, MapPin, Edit2, Printer, Repeat, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Event } from '../types';
-import { canUserEditEvent } from '../lib/permissions';
+import { isSuperAdmin } from '../lib/permissions';
 
 interface EventCardProps {
   event: Event;
@@ -13,26 +13,14 @@ interface EventCardProps {
 export function EventCard({ event, onEdit }: EventCardProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [canEdit, setCanEdit] = useState(false);
-
-  useEffect(() => {
-    const checkPermissions = async () => {
-      if (!user) {
-        setCanEdit(false);
-        return;
-      }
-      
-      try {
-        const editPermission = await canUserEditEvent(user, event.createdBy);
-        setCanEdit(editPermission);
-      } catch (error) {
-        console.error('Erro ao verificar permissões:', error);
-        setCanEdit(false);
-      }
-    };
-    
-    checkPermissions();
-  }, [user, event.createdBy]);
+  const canEdit = Boolean(
+    user && (
+      user.uid === event.createdBy ||
+      user.isAdmin ||
+      isSuperAdmin(user.email) ||
+      (event.creatorRole && user.role.trim().toLowerCase() === event.creatorRole.trim().toLowerCase())
+    )
+  );
 
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
