@@ -971,17 +971,33 @@ function PublicationCard({
   return (
     <>
       <div className="sm:hidden dark-card overflow-hidden border-l-4" style={{ borderLeftColor: status.color }}>
-        <div className="relative h-36 bg-[var(--bg-input)]">
-          {publication.media && publication.media[0] ? (
-            <img
-              src={getMediaDisplayUrl(publication.media[0])}
-              className="w-full h-full object-cover"
-              alt={publication.title}
-            />
+        <div className={`relative h-36 bg-[var(--bg-input)] ${publication.driveUrl ? 'cursor-pointer' : ''}`}>
+          {publication.driveUrl ? (
+            <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
+              {publication.media && publication.media[0] ? (
+                <img
+                  src={getMediaDisplayUrl(publication.media[0])}
+                  className="w-full h-full object-cover"
+                  alt={publication.title}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                  <ImageIcon className="w-9 h-9 opacity-25" />
+                </div>
+              )}
+            </a>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-              <ImageIcon className="w-9 h-9 opacity-25" />
-            </div>
+            publication.media && publication.media[0] ? (
+              <img
+                src={getMediaDisplayUrl(publication.media[0])}
+                className="w-full h-full object-cover"
+                alt={publication.title}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                <ImageIcon className="w-9 h-9 opacity-25" />
+              </div>
+            )
           )}
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 to-transparent" />
           <div className="absolute left-3 right-3 bottom-3 flex items-center justify-between gap-2">
@@ -1116,17 +1132,33 @@ function PublicationCard({
       <div className="hidden sm:block dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
         <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
           {/* Capa Compacta */}
-          <div className="w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner">
-            {publication.media && publication.media[0] ? (
-              <img
-                src={getMediaDisplayUrl(publication.media[0])}
-                className="w-full h-full object-cover"
-                alt={publication.title}
-              />
+          <div className={`w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner ${publication.driveUrl ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}>
+            {publication.driveUrl ? (
+              <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
+                {publication.media && publication.media[0] ? (
+                  <img
+                    src={getMediaDisplayUrl(publication.media[0])}
+                    className="w-full h-full object-cover"
+                    alt={publication.title}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                    <ImageIcon className="w-8 h-8 opacity-20" />
+                  </div>
+                )}
+              </a>
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-                <ImageIcon className="w-8 h-8 opacity-20" />
-              </div>
+              publication.media && publication.media[0] ? (
+                <img
+                  src={getMediaDisplayUrl(publication.media[0])}
+                  className="w-full h-full object-cover"
+                  alt={publication.title}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                  <ImageIcon className="w-8 h-8 opacity-20" />
+                </div>
+              )
             )}
             <div className="hidden sm:block absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
               CAPA
