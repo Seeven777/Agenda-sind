@@ -3,8 +3,14 @@ import { addDoc, collection, deleteDoc, doc, orderBy, query, updateDoc, limit } 
 import {
   AlertTriangle,
   Calendar,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
   CheckCircle,
   Clock,
+  GripVertical,
+  Move,
   ChevronDown,
   ChevronUp,
   Edit,
@@ -206,6 +212,7 @@ function normalizePublication(id: string, data: Partial<PublicationApproval>): P
     createdAt: data.createdAt || new Date(0).toISOString(),
     updatedAt: data.updatedAt || data.createdAt || new Date(0).toISOString(),
     requestedPublishDate: data.requestedPublishDate || '',
+    position: typeof data.position === 'number' ? data.position : 0,
     requestedPublishTime: data.requestedPublishTime || '',
     objective: data.objective || '',
     targetAudience: data.targetAudience || '',
@@ -230,6 +237,8 @@ export function Publications() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<PublicationFormData>(emptyForm);
+  const [isReordering, setIsReordering] = useState(false);
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [mediaDrafts, setMediaDrafts] = useState<MediaDraft[]>([]);
   const [mediaUrl, setMediaUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
@@ -246,14 +255,23 @@ export function Publications() {
 
   const fetchPublications = useCallback(async () => {
     setLoading(true);
-    // OTIMIZAÇÃO: Adicionado limite de 50 documentos para reduzir consumo de leitura
-    const q = query(collection(db, 'publications'), orderBy('createdAt', 'desc'), limit(50));
     try {
+      // OTIMIZAÇÃO: Tenta buscar por posição para suportar ordenação manual
+      const q = query(collection(db, 'publications'), orderBy('position', 'asc'), limit(50));
       const docs = await getCachedDocs<Partial<PublicationApproval>>('publications:latest', q, 2 * 60 * 1000);
-      setPublications(docs.map((item) => normalizePublication(item.id, item.data)));
+
+      let normalized = docs.map((item) => normalizePublication(item.id, item.data));
+
+      // Fallback para createdAt caso não existam documentos com o campo 'position' (migração inicial)
+      if (normalized.length === 0) {
+        const fallbackQ = query(collection(db, 'publications'), orderBy('createdAt', 'desc'), limit(50));
+        const fallbackDocs = await getCachedDocs<Partial<PublicationApproval>>('publications:fallback', fallbackQ, 2 * 60 * 1000);
+        normalized = fallbackDocs.map((item) => normalizePublication(item.id, item.data));
+      }
+
+      setPublications(normalized);
       setPermissionError(null);
     } catch (error) {
-      console.error('Erro ao carregar publicações:', error);
       setPermissionError('Não foi possível carregar as publicações.');
     } finally {
       setLoading(false);
@@ -440,6 +458,7 @@ export function Publications() {
         content: formData.content.trim() || 'Mídia enviada para aprovação.',
         driveUrl: formData.driveUrl.trim(),
         notes: formData.notes.trim(),
+        position: editingId ? (publications.find(p => p.id === editingId)?.position ?? 0) : (publications.length > 0 ? Math.min(...publications.map(p => p.position)) - 1 : 0),
         media,
         status,
         updatedAt: now,
@@ -458,6 +477,73 @@ export function Publications() {
       console.error('Erro ao criar publicação:', error);
       alert(error instanceof Error ? error.message : 'Não foi possível salvar a publicação. Verifique as permissões do Firestore e tente novamente.');
       setSubmittingStatus(null);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItemIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    // Adiciona uma classe para feedback visual no elemento original
+    if (e.currentTarget instanceof HTMLElement) {
+      setTimeout(() => e.currentTarget.classList.add('opacity-20'), 0);
+    }
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.classList.remove('opacity-20');
+    }
+    setDraggedItemIndex(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedItemIndex === null || draggedItemIndex === targetIndex) return;
+
+    const newOrder = [...publications];
+    const [movedItem] = newOrder.splice(draggedItemIndex, 1);
+    newOrder.splice(targetIndex, 0, movedItem);
+
+    // Atualização otimista da UI
+    setPublications(newOrder);
+
+    try {
+      const promises = newOrder.map((p, index) =>
+        updateDoc(doc(db, 'publications', p.id), { position: index })
+      );
+      await Promise.all(promises);
+      invalidateFirestoreCache('publications:latest');
+    } catch (error) {
+      console.error('Erro ao sincronizar nova ordem:', error);
+    }
+  };
+
+  const handleReorder = async (publication: PublicationApproval, direction: 'top' | 'up' | 'down' | 'bottom') => {
+    const currentIndex = publications.findIndex(p => p.id === publication.id);
+    if (currentIndex === -1) return;
+
+    const newOrder = [...publications];
+    const item = newOrder.splice(currentIndex, 1)[0];
+
+    if (direction === 'top') newOrder.unshift(item);
+    else if (direction === 'bottom') newOrder.push(item);
+    else if (direction === 'up') newOrder.splice(Math.max(0, currentIndex - 1), 0, item);
+    else if (direction === 'down') newOrder.splice(Math.min(publications.length, currentIndex + 1), 0, item);
+
+    setActionLoadingId(publication.id);
+    try {
+      // Atualiza as posições de todos os itens carregados para persistir a nova ordem no Firestore
+      const promises = newOrder.map((p, index) =>
+        updateDoc(doc(db, 'publications', p.id), { position: index })
+      );
+      await Promise.all(promises);
+      invalidateFirestoreCache('publications:latest');
+      await fetchPublications();
+    } catch (error) {
+      console.error('Erro ao reordenar:', error);
+      alert('Erro ao reorganizar os cards.');
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -595,32 +681,48 @@ export function Publications() {
             Publicações
           </h1>
           <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Aprovação, revisão e envio de conteúdos institucionais
+            Gerenciamento de Fluxo de Comunicação e Aprovações
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-premium inline-flex items-center justify-center gap-2 min-h-[48px]"
-        >
-          <Plus className="w-4 h-4" />
-          Nova publicação
-        </button>
+        <div className="flex items-center gap-2">
+          {canApprove && (
+            <button
+              onClick={() => setIsReordering(!isReordering)}
+              className={`inline-flex items-center justify-center gap-2 min-h-[48px] px-5 rounded-xl text-sm font-bold transition-all shadow-sm ${isReordering
+                ? 'bg-[var(--accent)] text-white ring-4 ring-orange-500/20'
+                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:border-[var(--accent)]'
+                }`}
+            >
+              {isReordering ? <CheckCircle className="w-4 h-4" /> : <Move className="w-4 h-4" />}
+              {isReordering ? 'Finalizar Ajuste' : 'Editar Posições'}
+            </button>
+          )}
+          {!isReordering && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="btn-premium inline-flex items-center justify-center gap-2 min-h-[48px] px-6 shadow-lg shadow-orange-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              Nova Campanha
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
-        <SummaryCard icon={Clock} label="Aguardando revisão" value={counts.em_revisao} color="#f59e0b" />
-        <SummaryCard icon={CheckCircle} label="Aprovadas para envio" value={counts.aprovado} color="#22c55e" />
-        <SummaryCard icon={Send} label="Enviadas" value={counts.enviado} color="#3b82f6" />
-        <SummaryCard icon={AlertTriangle} label="Pedem atenção" value={needsAttention} color="var(--accent)" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard icon={Clock} label="Em Revisão" value={counts.em_revisao} color="#f59e0b" description="Aguardando feedback" />
+        <SummaryCard icon={CheckCircle} label="Aprovadas" value={counts.aprovado} color="#22c55e" description="Prontas para o canal" />
+        <SummaryCard icon={Send} label="Finalizadas" value={counts.enviado} color="#3b82f6" description="Histórico de envios" />
+        <SummaryCard icon={AlertTriangle} label="Urgente" value={needsAttention} color="var(--accent)" description="Pendências críticas" />
       </div>
 
       {showForm && (
-        <div className="dark-card p-4 sm:p-6">
+        <div className="dark-card p-4 sm:p-8 border-t-4 border-t-[var(--accent)] animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-start justify-between gap-4 mb-5">
             <div>
-              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{editingId ? 'Editar publicação' : 'Nova publicação'}</h2>
+              <h2 className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>{editingId ? 'Refinar Publicação' : 'Planejar Nova Publicação'}</h2>
               <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-                Registre o texto, canal e prazo para aprovação.
+                Configure os detalhes estratégicos e o conteúdo criativo.
               </p>
             </div>
             <button
@@ -818,8 +920,9 @@ export function Publications() {
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible">
-        <FilterButton active={activeStatus === 'todos'} label="Todos" count={publications.length} onClick={() => setActiveStatus('todos')} />
+      <div className="flex items-center gap-2 p-1 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-x-auto no-scrollbar">
+        <FilterButton active={activeStatus === 'todos'} label="Ver Tudo" count={publications.length} onClick={() => setActiveStatus('todos')} />
+        <div className="w-px h-6 bg-[var(--border-subtle)] mx-1" />
         {Object.entries(statusConfig).map(([status, config]) => (
           <FilterButton
             key={status}
@@ -832,7 +935,7 @@ export function Publications() {
         ))}
       </div>
 
-      <div className="space-y-2.5 sm:space-y-3">
+      <div className="grid grid-cols-1 gap-4">
         {filteredPublications.length === 0 ? (
           <div className="dark-card empty-state">
             <div className="empty-state-icon">
@@ -842,13 +945,14 @@ export function Publications() {
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Crie uma solicitação ou altere o filtro selecionado.</p>
           </div>
         ) : (
-          filteredPublications.map((publication) => (
+          filteredPublications.map((publication, index) => (
             <PublicationCard
               key={publication.id}
               publication={publication}
               canApprove={canApprove}
               canRemove={canRemove(publication)}
               isOwner={isOwner(publication)}
+              isReordering={isReordering}
               loading={actionLoadingId === publication.id}
               onSendDraft={() => sendDraftToReview(publication)}
               onApprove={() => approvePublication(publication)}
@@ -858,6 +962,11 @@ export function Publications() {
               onRemove={() => removePublication(publication)}
               onClearMedia={() => clearPublicationMedia(publication)}
               onUpdateSlideNote={(mediaIndex, note) => updateSlideNote(publication, mediaIndex, note)}
+              onReorder={(direction) => handleReorder(publication, direction)}
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDragEnd={handleDragEnd}
+              onDrop={(e) => handleDrop(e, index)}
             />
           ))
         )}
@@ -877,14 +986,22 @@ export function Publications() {
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
+function SummaryCard({ icon: Icon, label, value, color, description }: { icon: React.ElementType; label: string; value: number; color: string, description?: string }) {
   return (
-    <div className="dark-card p-2.5 sm:p-4">
-      <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3" style={{ background: `${color}22` }}>
-        <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color }} />
+    <div className="dark-card p-5 group hover:translate-y-[-2px] transition-all duration-300 relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-[0.03] group-hover:scale-150 transition-transform duration-500" style={{ background: color }} />
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+          <p className="text-3xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
+        </div>
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ background: 'var(--bg-input)', border: `1px solid ${color}33` }}>
+          <Icon className="w-6 h-6" style={{ color }} />
+        </div>
       </div>
-      <p className="text-lg sm:text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{value}</p>
-      <p className="text-[9px] sm:text-xs leading-tight" style={{ color: 'var(--text-muted)' }}>{label}</p>
+      {description && (
+        <p className="text-[10px] mt-4 font-medium" style={{ color: 'var(--text-muted)' }}>{description}</p>
+      )}
     </div>
   );
 }
@@ -916,15 +1033,15 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 flex-shrink-0 min-h-[40px]"
+      className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 flex-shrink-0 whitespace-nowrap`}
       style={{
         background: active ? color : 'var(--bg-card)',
-        color: active ? 'white' : 'var(--text-secondary)',
-        border: active ? '1px solid transparent' : '1px solid var(--border-subtle)',
+        color: active ? 'white' : 'var(--text-muted)',
+        boxShadow: active ? `0 4px 12px ${color}44` : 'none'
       }}
     >
       {label}
-      <span className="px-2 py-0.5 rounded-lg text-[11px]" style={{ background: active ? 'rgba(255,255,255,0.18)' : 'var(--bg-input)' }}>
+      <span className={`px-2 py-0.5 rounded-lg text-[10px] ${active ? 'bg-white/20' : 'bg-[var(--bg-input)]'}`}>
         {count}
       </span>
     </button>
@@ -945,6 +1062,12 @@ function PublicationCard({
   onRemove,
   onClearMedia,
   onUpdateSlideNote,
+  onReorder,
+  isReordering,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
 }: {
   publication: PublicationApproval;
   canApprove: boolean;
@@ -959,6 +1082,12 @@ function PublicationCard({
   onRemove: () => void;
   onClearMedia: () => void;
   onUpdateSlideNote: (mediaIndex: number, note: string) => void;
+  onReorder: (direction: 'top' | 'up' | 'down' | 'bottom') => void;
+  isReordering?: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
 }) {
   const status = statusConfig[publication.status];
   const StatusIcon = status.icon;
@@ -966,12 +1095,14 @@ function PublicationCard({
   const ChannelIcon = channel.icon;
   const priority = priorityConfig[publication.priority];
   const canEditCard = canApprove || (isOwner && ['rascunho', 'reprovado'].includes(publication.status));
+  const [showFullContent, setShowFullContent] = useState(false);
   const [showMobileDetails, setShowMobileDetails] = useState(false);
 
   return (
     <>
-      <div className="sm:hidden dark-card overflow-hidden border-l-4" style={{ borderLeftColor: status.color }}>
-        <div className={`relative h-36 bg-[var(--bg-input)] ${publication.driveUrl ? 'cursor-pointer' : ''}`}>
+      {/* Redesign Mobile */}
+      <div className="sm:hidden dark-card overflow-hidden group">
+        <div className={`relative h-32 bg-[var(--bg-input)] ${publication.driveUrl ? 'cursor-pointer' : ''}`}>
           {publication.driveUrl ? (
             <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
               {publication.media && publication.media[0] ? (
@@ -1000,28 +1131,66 @@ function PublicationCard({
             )
           )}
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 to-transparent" />
-          <div className="absolute left-3 right-3 bottom-3 flex items-center justify-between gap-2">
-            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md" style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}>
-              <StatusIcon className="w-3.5 h-3.5" />
-              {status.label}
-            </span>
-            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md" style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}>
-              <ChannelIcon className="w-3.5 h-3.5" />
-              {channel.label}
+          <div className="absolute left-3 right-3 bottom-3 flex flex-wrap gap-2">
+            <div className="flex gap-2 w-full justify-between">
+              <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md shadow-lg" style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}>
+                <StatusIcon className="w-3.5 h-3.5" />
+                {status.label}
+              </span>
+              <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1.5 backdrop-blur-md shadow-lg" style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}>
+                <ChannelIcon className="w-3.5 h-3.5" />
+                {channel.label}
+              </span>
+            </div>
+            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-black backdrop-blur-md shadow-lg" style={{ background: `${priority.color}CC`, color: 'white' }}>
+              {priority.label}
             </span>
           </div>
         </div>
 
-        <div className="p-4 space-y-3">
-          <div>
-            <h2 className="text-base font-black leading-tight line-clamp-2" style={{ color: 'var(--text-primary)' }}>
-              {publication.title}
-            </h2>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
-              <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
-            </div>
+        {isReordering && (
+          <div className="absolute top-2 right-2 p-2 bg-black/40 backdrop-blur-md rounded-lg text-white">
+            <GripVertical className="w-5 h-5" />
           </div>
+        )}
+
+        <div className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h2 className="text-base font-black leading-tight line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+                {publication.title}
+              </h2>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
+                <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
+              </div>
+            </div>
+            {canApprove && isReordering && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => onReorder('up')} className="p-1.5 rounded-lg bg-[var(--bg-input)] text-[var(--accent)]"><ArrowUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => onReorder('down')} className="p-1.5 rounded-lg bg-[var(--bg-input)] text-[var(--accent)]"><ArrowDown className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+          </div>
+
+          {publication.content && (
+            <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Legenda</p>
+              <p className={`text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap ${showFullContent ? '' : 'line-clamp-3'}`}>
+                {publication.content}
+              </p>
+              {publication.content.length > 120 && (
+                <button
+                  type="button"
+                  onClick={() => setShowFullContent(!showFullContent)}
+                  className="mt-2 text-xs font-bold"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {showFullContent ? 'Ler menos' : 'Ler mais'}
+                </button>
+              )}
+            </div>
+          )}
 
           {isOwner && publication.status === 'reprovado' && (
             <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3">
@@ -1073,13 +1242,6 @@ function PublicationCard({
                 </div>
               )}
 
-              {publication.content && (
-                <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Legenda</p>
-                  <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">{publication.content}</p>
-                </div>
-              )}
-
               {publication.publicationUrl && (
                 <a
                   href={publication.publicationUrl}
@@ -1094,45 +1256,54 @@ function PublicationCard({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-[var(--border-subtle)]">
-            {publication.driveUrl && (
-              <a
-                href={publication.driveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="col-span-2 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-bold bg-[#ff6f0f] text-white min-h-[48px]"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Ver Slides
-              </a>
-            )}
-            {canEditCard && publication.status !== 'enviado' && (
-              <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
-            )}
-            {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
-              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
-            )}
-            {publication.status === 'em_revisao' && canApprove && (
-              <>
-                <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
-                <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
-              </>
-            )}
-            {publication.status === 'aprovado' && canApprove && (
-              <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
-            )}
-            {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
-              <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
-            )}
-            {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
-          </div>
+          {!isReordering && (
+            <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-[var(--border-subtle)]">
+              {publication.driveUrl && (
+                <a
+                  href={publication.driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="col-span-2 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-xs font-bold bg-[#ff6f0f] text-white min-h-[44px]"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Ver Slides
+                </a>
+              )}
+              {canEditCard && publication.status !== 'enviado' && (
+                <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
+              )}
+              {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
+                <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
+              )}
+              {publication.status === 'em_revisao' && canApprove && (
+                <>
+                  <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
+                  <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
+                </>
+              )}
+              {publication.status === 'aprovado' && canApprove && (
+                <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
+              )}
+              {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
+                <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
+              )}
+              {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="hidden sm:block dark-card p-4 hover:border-[var(--accent)] transition-all border-l-4" style={{ borderLeftColor: status.color }}>
-        <div className="flex flex-wrap lg:flex-nowrap gap-3 sm:gap-5">
-          {/* Capa Compacta */}
-          <div className={`w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-square relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner ${publication.driveUrl ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}>
+      {/* Desktop layout */}
+      <div
+        className={`hidden sm:block dark-card p-0 transition-all duration-500 group border-l-0 ${isReordering ? 'scale-[0.99] ring-2 ring-[var(--accent)] shadow-2xl cursor-grab active:cursor-grabbing' : 'hover:shadow-2xl hover:shadow-black/20 font-sans'}`}
+        draggable={isReordering}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        onDrop={onDrop}
+      >
+        <div className="flex h-full min-h-[140px]">
+          <div className={`w-20 h-20 sm:w-full sm:h-auto lg:w-48 shrink-0 sm:aspect-video lg:aspect-video relative rounded-lg sm:rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] shadow-inner ${publication.driveUrl ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}>
             {publication.driveUrl ? (
               <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
                 {publication.media && publication.media[0] ? (
@@ -1160,135 +1331,97 @@ function PublicationCard({
                 </div>
               )
             )}
-            <div className="hidden sm:block absolute top-2 left-2 px-2 py-1 rounded-md text-[9px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
+            <div className="hidden sm:block absolute top-1 left-1 px-1.5 py-0.5 rounded text-[7px] font-black uppercase text-white bg-black/50 backdrop-blur-md border border-white/10">
               CAPA
             </div>
-          </div>
-
-          {/* Conteúdo Principal */}
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}>
-                <StatusIcon className="w-3.5 h-3.5" />
-                {status.label}
-              </span>
-              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: 'var(--bg-input)', color: channel.color }}>
-                <ChannelIcon className="w-3.5 h-3.5" />
-                {channel.label}
-              </span>
-              <span className="hidden sm:inline-flex px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>
-                {priority.label}
-              </span>
-            </div>
-
-            <h2 className="text-sm sm:text-base font-black leading-tight line-clamp-2 sm:truncate" style={{ color: 'var(--text-primary)' }}>
-              {publication.title}
-            </h2>
-
-            <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5 mb-2 sm:mb-4 text-[10px] sm:text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}</span>
-              <span className="hidden sm:flex items-center gap-1"><FileText className="w-3 h-3" /> {publication.creatorName}</span>
-            </div>
-
-            {/* Alerta de Notificação para o Criador (quando reprovado) */}
-            {isOwner && publication.status === 'reprovado' && (
-              <div className="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center gap-3 animate-pulse">
-                <AlertTriangle className="w-5 h-5 text-orange-500" />
-                <div>
-                  <p className="text-xs font-bold text-orange-500">Ação necessária!</p>
-                  <p className="text-[10px] text-orange-600/80">O revisor solicitou alterações para você.</p>
-                </div>
+            {isReordering && (
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
+                <GripVertical className="w-12 h-12 text-white/50" />
               </div>
             )}
+          </div>
 
-            {/* Grid de Informações Estratégicas */}
-            <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {publication.objective && (
-                <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Objetivo</p>
-                  <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.objective}</p>
-                </div>
-              )}
-              {publication.targetAudience && (
-                <div className="p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)]/30">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Público-Alvo</p>
-                  <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{publication.targetAudience}</p>
+          <div className="flex-1 p-3 flex flex-col min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: status.bg, color: status.color }}><StatusIcon className="w-3.5 h-3.5" />{status.label}</span>
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1" style={{ background: 'var(--bg-input)', color: channel.color }}><ChannelIcon className="w-3.5 h-3.5" />{channel.label}</span>
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold" style={{ background: priority.bg, color: priority.color }}>{priority.label}</span>
+            </div>
+
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h2 className="text-sm font-black leading-tight text-[var(--text-primary)] truncate">
+                {publication.title}
+              </h2>
+              {canApprove && isReordering && (
+                <div className="flex items-center p-0.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] shadow-sm shrink-0">
+                  <button onClick={() => onReorder('top')} className="p-1.5 rounded-md hover:bg-[var(--accent-soft)] text-[var(--text-muted)] hover:text-[var(--accent)]"><ArrowUpToLine className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => onReorder('up')} className="p-1.5 rounded-md hover:bg-[var(--accent-soft)] text-[var(--text-muted)] hover:text-[var(--accent)]"><ArrowUp className="w-3.5 h-3.5" /></button>
+                  <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
+                  <button onClick={() => onReorder('down')} className="p-1.5 rounded-md hover:bg-[var(--accent-soft)] text-[var(--text-muted)] hover:text-[var(--accent)]"><ArrowDown className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => onReorder('bottom')} className="p-1.5 rounded-md hover:bg-[var(--accent-soft)] text-[var(--text-muted)] hover:text-[var(--accent)]"><ArrowDownToLine className="w-3.5 h-3.5" /></button>
                 </div>
               )}
             </div>
 
-            {/* Conteúdo/Legenda da Publicação */}
-            <div className="hidden sm:block mb-4">
-              <p className="text-[9px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">Texto da Legenda / Conteúdo:</p>
-              <div className="p-3 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <p className="text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
-                  {publication.content}
-                </p>
-              </div>
+            <div className="flex flex-wrap items-center gap-3 mb-2 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>
+              <span className="flex items-center gap-1.5 bg-[var(--bg-input)] px-2 py-1 rounded-lg">
+                <Calendar className="w-3 h-3 text-[var(--accent)]" />
+                {formatDate(publication.requestedPublishDate, publication.requestedPublishTime)}
+              </span>
+              <span className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-[var(--accent-soft)] flex items-center justify-center text-[10px] font-black text-[var(--accent)]">{publication.creatorName.charAt(0)}</div>
+                {publication.creatorName}
+              </span>
             </div>
 
-            {/* Feedback de Alterações (Comentários do Revisor) */}
-            {(publication.notes || publication.rejectionReason) && (
-              <div className="p-3 rounded-xl mb-4 text-xs border border-dashed" style={{ background: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.3)' }}>
-                <p className="font-bold uppercase tracking-tighter text-[9px] mb-1.5 flex items-center gap-1" style={{ color: '#f59e0b' }}>
-                  <MessageCircle className="w-3 h-3" /> Comentários do Revisor:
-                </p>
-                <p className="text-[var(--text-secondary)] leading-normal italic">
-                  {publication.rejectionReason || publication.notes}
-                </p>
+            <div className="flex-1 space-y-2">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                {publication.objective && (
+                  <div className="p-2 rounded-lg bg-[var(--bg-input)]/50 border border-[var(--border-subtle)]/50">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-0.5">Objetivo</p>
+                    <p className="text-xs text-[var(--text-secondary)] leading-tight">{publication.objective}</p>
+                  </div>
+                )}
+                {publication.targetAudience && (
+                  <div className="p-2 rounded-lg bg-[var(--bg-input)]/50 border border-[var(--border-subtle)]/50">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-0.5">Público</p>
+                    <p className="text-xs text-[var(--text-secondary)] leading-tight">{publication.targetAudience}</p>
+                  </div>
+                )}
               </div>
-            )}
-
-            <div className="hidden sm:flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-subtle)]">
-              {publication.publicationUrl && (
-                <a
-                  href={publication.publicationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-color)] hover:brightness-110 active:scale-95"
-                >
-                  <Globe2 className="w-3.5 h-3.5" />
-                  Ver Publicado
-                </a>
-              )}
+              <div className="p-2 rounded-lg bg-[var(--bg-input)]/40 border border-[var(--border-subtle)]/30 italic">
+                <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1 flex items-center gap-1.5"><FileText className="w-3 h-3" /> Conteúdo</p>
+                <p className={`text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap ${showFullContent ? '' : 'line-clamp-2'}`}>"{publication.content}"</p>
+                {publication.content && publication.content.length > 100 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFullContent(!showFullContent)}
+                    className="mt-1 text-[10px] font-bold text-[var(--accent)]"
+                  >
+                    {showFullContent ? 'Ler menos' : 'Ler mais...'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Ações Compactas */}
-          <div className="grid grid-cols-2 sm:flex lg:flex-col justify-start lg:justify-end gap-2.5 sm:gap-2 border-t lg:border-t-0 lg:border-l border-[var(--border-subtle)] pt-3 lg:pt-0 lg:pl-5 shrink-0 basis-full lg:basis-auto w-full lg:w-48">
-            {publication.driveUrl && (
-              <a
-                href={publication.driveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold bg-[#ff6f0f] text-white hover:brightness-110 transition-all shadow-lg shadow-orange-900/20 min-h-[46px] w-full sm:w-auto lg:w-full"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Ver Slides
-              </a>
-            )}
-
-            {canEditCard && publication.status !== 'enviado' && (
-              <ActionButton icon={Edit} label="Editar Card" loading={loading} onClick={onEdit} tone="muted" />
-            )}
-
-            {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && (
-              <ActionButton icon={Send} label="Solicitar Revisão" loading={loading} onClick={onSendDraft} tone="accent" />
-            )}
-            {publication.status === 'em_revisao' && canApprove && (
-              <>
-                <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" />
-                <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" />
-              </>
-            )}
-            {publication.status === 'aprovado' && canApprove && (
-              <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" />
-            )}
-            {canApprove && publication.media && publication.media.length > 0 && (publication.status === 'aprovado' || publication.status === 'enviado') && (
-              <ActionButton icon={Trash2} label="Limpar imagens" loading={loading} onClick={onClearMedia} tone="muted" />
-            )}
-            {canRemove && <ActionButton icon={X} label="Excluir" loading={loading} onClick={onRemove} tone="muted" />}
-          </div>
+          {!isReordering && (
+            <div className="w-32 p-3 bg-[var(--bg-input)]/20 border-l border-[var(--border-subtle)] flex flex-col gap-1.5">
+              <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Ações</p>
+              {publication.driveUrl && <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-black uppercase bg-[#ff6f0f] text-white active:scale-95">Drive <ExternalLink className="w-3 h-3" /></a>}
+              <div className="flex flex-col gap-1 mt-auto">
+                {canEditCard && publication.status !== 'enviado' && <ActionButton icon={Edit} label="Editar" loading={loading} onClick={onEdit} tone="muted" small />}
+                {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && <ActionButton icon={Send} label="Enviar" loading={loading} onClick={onSendDraft} tone="accent" small />}
+                {publication.status === 'em_revisao' && canApprove && (
+                  <>
+                    <ActionButton icon={CheckCircle} label="Aprovar" loading={loading} onClick={onApprove} tone="success" shadow small />
+                    <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" small />
+                  </>
+                )}
+                {publication.status === 'aprovado' && canApprove && <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" shadow small />}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -1666,29 +1799,33 @@ function ActionButton({
   loading,
   onClick,
   tone,
+  shadow,
+  small,
 }: {
   icon: React.ElementType;
   label: string;
   loading: boolean;
   onClick: () => void;
   tone: 'accent' | 'success' | 'danger' | 'info' | 'muted';
+  shadow?: boolean;
+  small?: boolean;
 }) {
   const styles = {
     accent: { background: 'var(--accent)', color: 'white', border: '1px solid var(--accent)' },
     success: { background: '#22c55e', color: 'white', border: '1px solid #22c55e' },
-    danger: { background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.22)' },
+    danger: { background: 'transparent', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' },
     info: { background: '#3b82f6', color: 'white', border: '1px solid #3b82f6' },
-    muted: { background: 'var(--bg-input)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' },
+    muted: { background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' },
   }[tone];
 
   return (
     <button
       onClick={onClick}
       disabled={loading}
-      className="px-3 sm:px-4 py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 w-full sm:w-auto lg:w-full min-h-[46px] whitespace-nowrap"
+      className={`rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-50 ${small ? 'px-2 py-1.5 text-[9px]' : 'px-4 py-2.5 text-[11px]'} ${shadow ? 'shadow-lg shadow-black/10' : ''}`}
       style={styles}
     >
-      {loading ? <Clock className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}
+      {loading ? <Clock className={`${small ? 'w-3 h-3' : 'w-3.5 h-3.5'} animate-spin`} /> : <Icon className={small ? 'w-3 h-3' : 'w-3.5 h-3.5'} />}
       {label}
     </button>
   );
