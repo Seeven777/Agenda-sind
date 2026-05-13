@@ -1409,7 +1409,7 @@ function PublicationCard({
             <div className="w-32 p-3 bg-[var(--bg-input)]/20 border-l border-[var(--border-subtle)] flex flex-col gap-1.5">
               <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-1">Ações</p>
               {publication.driveUrl && <a href={publication.driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] font-black uppercase bg-[#ff6f0f] text-white active:scale-95">Drive <ExternalLink className="w-3 h-3" /></a>}
-              <div className="flex flex-col gap-1 mt-auto">
+              <div className="flex flex-col gap-1.5">
                 {canEditCard && publication.status !== 'enviado' && <ActionButton icon={Edit} label="Editar" loading={loading} onClick={onEdit} tone="muted" small />}
                 {(publication.status === 'rascunho' || publication.status === 'reprovado') && isOwner && <ActionButton icon={Send} label="Enviar" loading={loading} onClick={onSendDraft} tone="accent" small />}
                 {publication.status === 'em_revisao' && canApprove && (
@@ -1418,6 +1418,7 @@ function PublicationCard({
                     <ActionButton icon={XCircle} label="Ajustes" loading={loading} onClick={onReject} tone="danger" small />
                   </>
                 )}
+                {canRemove && <ActionButton icon={Trash2} label="Excluir" loading={loading} onClick={onRemove} tone="muted" small />}
                 {publication.status === 'aprovado' && canApprove && <ActionButton icon={Send} label="Postar" loading={loading} onClick={onMarkSent} tone="info" shadow small />}
               </div>
             </div>
